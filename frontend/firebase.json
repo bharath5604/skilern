@@ -1,0 +1,54 @@
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "skilern-8571f",
+          "appId": "1:64177655201:android:68c6a94f5322118bde8fe0",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "",
+          "configurations": {
+            "android": "1:64177655201:android:68c6a94f5322118bde8fe0",
+            "ios": "1:798914252668:ios:bc82ad4c98a34f5e4edef9",
+            "macos": "1:798914252668:ios:bc82ad4c98a34f5e4edef9",
+            "web": "1:64177655201:web:476ff16e8de805d8de8fe0",
+            "windows": "1:798914252668:web:0ae29d92ea61c8c64edef9"
+          }
+        }
+      }
+    }
+  },
+  "hosting": {
+    "public": "build/web",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "headers": [
+      {
+        "source": "/firebase-messaging-sw.js",
+        "headers": [
+          {
+            "key": "Content-Type",
+            "value": "application/javascript"
+          },
+          {
+            "key": "Cache-Control",
+            "value": "no-cache"
+          }
+        ]
+      }
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  }
+}

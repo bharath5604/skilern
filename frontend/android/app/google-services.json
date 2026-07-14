@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "64177655201",
+    "project_id": "skilern-8571f",
+    "storage_bucket": "skilern-8571f.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:64177655201:android:68c6a94f5322118bde8fe0",
+        "android_client_info": {
+          "package_name": "com.krrinnovations.skilern"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBg01w9sM02pD0mI8N2kcN5v-YAW039grw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+} 
