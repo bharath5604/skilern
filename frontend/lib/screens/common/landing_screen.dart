@@ -8,7 +8,7 @@ import '../../services/task_service.dart';
 import '../../constants/domains.dart';
 
 // =============================================================================
-// NEW: SEPARATE POLICY PAGE (For Google Play URL Compliance)
+// NEW: SEPARATE POLICY PAGE (For Google Play Compliance)
 // =============================================================================
 class PolicyPage extends StatelessWidget {
   final String title;
@@ -34,11 +34,12 @@ class PolicyPage extends StatelessWidget {
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
           child: Container(
+            width: double.infinity,
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)],
+              borderRadius: BorderRadius.circular(24),
+              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 15)],
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -49,7 +50,7 @@ class PolicyPage extends StatelessWidget {
                 const Divider(height: 40),
                 Text(
                   content,
-                  style: const TextStyle(fontSize: 14, height: 1.6, color: Colors.black87),
+                  style: const TextStyle(fontSize: 14, height: 1.7, color: Colors.black87),
                 ),
                 const SizedBox(height: 40),
               ],
@@ -334,7 +335,7 @@ class _LandingScreenState extends State<LandingScreen>
   }
 
   // ============================================================
-  // COMPLIANCE FOOTER Logic (Finalized for Google Play)
+  // COMPLIANCE FOOTER
   // ============================================================
   Widget _buildComplianceFooter() {
     return Container(
@@ -373,7 +374,6 @@ class _LandingScreenState extends State<LandingScreen>
   Widget _footerLink(String label, String content) {
     return InkWell(
       onTap: () {
-        // This opens the specific policy in a new full-screen internal page
         Navigator.push(context, MaterialPageRoute(builder: (_) => PolicyPage(title: label, content: content)));
       },
       child: Text(label, style: const TextStyle(color: secondaryPurple, fontSize: 13, fontWeight: FontWeight.bold, decoration: TextDecoration.underline)),
@@ -439,7 +439,94 @@ class _LandingScreenState extends State<LandingScreen>
 }
 
 // =============================================================================
-// LEGAL CONTENT (BASED ON YOUR DOCUMENTS)
+// HERO SLIDER SECTION (RESTORED)
+// =============================================================================
+class _HeroSliderSection extends StatefulWidget {
+  final Animation<double> fadeAnim;
+  final Animation<Offset> slideAnim;
+  final bool isDesktop;
+  const _HeroSliderSection({required this.fadeAnim, required this.slideAnim, required this.isDesktop});
+
+  @override
+  State<_HeroSliderSection> createState() => _HeroSliderSectionState();
+}
+
+class _HeroSliderSectionState extends State<_HeroSliderSection> {
+  final List<Map<String, dynamic>> _slides = [
+    {'img': 'https://images.unsplash.com/photo-1522202176988-66273c2fd55f?w=800', 'tag': 'Talent Network', 'h': 'Vetted Student Talent,\nAssigned Directly.'},
+    {'img': 'https://images.unsplash.com/photo-1531482615713-2afd69097998?w=800', 'tag': 'Fast Matching', 'h': 'Post a Task.\nGet Matched in Hours.'},
+    {'img': 'https://images.unsplash.com/photo-1519389950473-47ba0277781c?w=800', 'tag': 'Quality Work', 'h': 'Review Deliverables.\nPay Only on Approval.'},
+  ];
+  int _currentIndex = 0;
+  late PageController _pageController;
+  @override
+  void initState() { super.initState(); _pageController = PageController(); Timer.periodic(const Duration(seconds: 4), (t) { if (mounted) { _currentIndex = (_currentIndex + 1) % _slides.length; _pageController.animateToPage(_currentIndex, duration: const Duration(milliseconds: 600), curve: Curves.easeInOut); } }); }
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(opacity: widget.fadeAnim, child: SlideTransition(position: widget.slideAnim, child: ClipRRect(borderRadius: BorderRadius.circular(24), child: SizedBox(height: widget.isDesktop ? 340 : 260, child: PageView.builder(controller: _pageController, itemCount: _slides.length, itemBuilder: (c, i) => Stack(fit: StackFit.expand, children: [Image.network(_slides[i]['img'], fit: BoxFit.cover), Container(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.centerLeft, end: Alignment.centerRight, colors: [Colors.black87, Colors.black54, Colors.transparent], stops: const [0, 0.4, 0.9]))), Padding(padding: const EdgeInsets.all(24), child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), decoration: BoxDecoration(color: Colors.white12, borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.white24)), child: Text(_slides[i]['tag'], style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold))), const SizedBox(height: 12), Text(_slides[i]['h'], style: TextStyle(color: Colors.white, fontSize: widget.isDesktop ? 32 : 24, fontWeight: FontWeight.w900))]))]))))));
+  }
+}
+
+// =============================================================================
+// INTERACTIVE STATS SECTION (RESTORED)
+// =============================================================================
+class _InteractiveStatsSection extends StatefulWidget {
+  final bool statsLoading; final List<Map<String, dynamic>> statsList; final bool isDesktop;
+  const _InteractiveStatsSection({required this.statsLoading, required this.statsList, required this.isDesktop});
+  @override State<_InteractiveStatsSection> createState() => _InteractiveStatsSectionState();
+}
+class _InteractiveStatsSectionState extends State<_InteractiveStatsSection> with TickerProviderStateMixin {
+  late List<AnimationController> _controllers; late List<Animation<double>> _scaleAnims; late List<Animation<double>> _fadeAnims;
+  @override void initState() { super.initState(); _controllers = List.generate(3, (i) => AnimationController(vsync: this, duration: Duration(milliseconds: 400 + i * 120))); _scaleAnims = _controllers.map((c) => Tween<double>(begin: 0.7, end: 1.0).animate(CurvedAnimation(parent: c, curve: Curves.elasticOut))).toList(); _fadeAnims = _controllers.map((c) => Tween<double>(begin: 0.0, end: 1.0).animate(CurvedAnimation(parent: c, curve: Curves.easeOut))).toList(); if (!widget.statsLoading) _playAll(); }
+  void _playAll() { for (int i = 0; i < _controllers.length; i++) { Future.delayed(Duration(milliseconds: i * 100), () { if (mounted) _controllers[i].forward(); }); } }
+  @override void dispose() { for (final c in _controllers) c.dispose(); super.dispose(); }
+  @override Widget build(BuildContext context) { if (widget.statsLoading) return const Center(child: CircularProgressIndicator()); return Row(children: List.generate(widget.statsList.length, (i) { final stat = widget.statsList[i]; return Expanded(child: Padding(padding: EdgeInsets.only(right: i < 2 ? 12 : 0), child: ScaleTransition(scale: _scaleAnims[i], child: FadeTransition(opacity: _fadeAnims[i], child: _StatTile(label: stat['label'], value: stat['value'], icon: stat['icon'], color: stat['color'], bgColor: stat['bgColor']))))); })); }
+}
+class _StatTile extends StatelessWidget {
+  final String label, value; final IconData icon; final Color color, bgColor;
+  const _StatTile({required this.label, required this.value, required this.icon, required this.color, required this.bgColor});
+  @override Widget build(BuildContext context) { return Container(padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 10), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.grey[100]!), boxShadow: [BoxShadow(color: color.withOpacity(0.06), blurRadius: 8, offset: const Offset(0, 4))]), child: Column(children: [Container(width: 42, height: 42, decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.circular(13)), child: Icon(icon, color: color, size: 22)), const SizedBox(height: 10), Text(value, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Colors.black87, letterSpacing: -0.5)), Text(label, style: const TextStyle(fontSize: 11, color: Colors.grey, fontWeight: FontWeight.w600))])); }
+}
+
+// =============================================================================
+// SUB-COMPONENTS (PRESERVED)
+// =============================================================================
+class _InteractiveWorkflowSection extends StatefulWidget {
+  final bool isDesktop; const _InteractiveWorkflowSection({required this.isDesktop});
+  @override State<_InteractiveWorkflowSection> createState() => _InteractiveWorkflowSectionState();
+}
+class _InteractiveWorkflowSectionState extends State<_InteractiveWorkflowSection> with TickerProviderStateMixin {
+  int _activeStep = 0; late AnimationController _pulseCtrl; late Animation<double> _pulseAnim;
+  static const List<Map<String, dynamic>> _steps = [
+    {'icon': Icons.edit_note_rounded, 'title': 'Post Request', 'color': Color(0xFF6A11CB), 'bgColor': Color(0xFFF3E8FF)},
+    {'icon': Icons.person_search_rounded, 'title': 'Match', 'color': Color(0xFF2575FC), 'bgColor': Color(0xFFEFF6FF)},
+    {'icon': Icons.task_alt_rounded, 'title': 'Approve', 'color': Color(0xFF059669), 'bgColor': Color(0xFFECFDF5)},
+    {'icon': Icons.qr_code_2_rounded, 'title': 'Payout', 'color': Color(0xFFD97706), 'bgColor': Color(0xFFFFFBEB)},
+  ];
+  @override void initState() { super.initState(); _pulseCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 900)); _pulseAnim = Tween<double>(begin: 1.0, end: 1.08).animate(CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut)); _pulseCtrl.repeat(reverse: true); }
+  @override void dispose() { _pulseCtrl.dispose(); super.dispose(); }
+  @override Widget build(BuildContext context) { final active = _steps[_activeStep]; return Column(children: [Row(children: List.generate(_steps.length, (i) => Expanded(child: GestureDetector(onTap: () => setState(() => _activeStep = i), child: AnimatedContainer(duration: const Duration(milliseconds: 280), margin: EdgeInsets.only(right: i < 3 ? 8 : 0), padding: const EdgeInsets.symmetric(vertical: 14), decoration: BoxDecoration(color: i == _activeStep ? active['color'] : Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.grey[200]!)), child: Column(children: [Icon(_steps[i]['icon'], color: i == _activeStep ? Colors.white : _steps[i]['color'], size: 20), const SizedBox(height: 6), Text(_steps[i]['title'], style: const TextStyle(fontSize: 8, fontWeight: FontWeight.bold))])))))), const SizedBox(height: 16), Container(padding: const EdgeInsets.all(20), width: double.infinity, decoration: BoxDecoration(color: active['bgColor'], borderRadius: BorderRadius.circular(20)), child: Text(active['title'], style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: active['color'])))]); }
+}
+class _AnimatedAppBar extends StatelessWidget {
+  final VoidCallback onEmergencyPost; const _AnimatedAppBar({required this.onEmergencyPost});
+  @override build(BuildContext context) { return Container(margin: const EdgeInsets.all(12), padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)]), child: Row(children: [const Text('SKILERN', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Color(0xFF6A11CB))), const Spacer(), TextButton(onPressed: onEmergencyPost, child: const Text('Emergency Post', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold))), const SizedBox(width: 8), ElevatedButton(onPressed: () => Navigator.pushNamed(context, '/login'), style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6A11CB)), child: const Text('Sign In', style: TextStyle(color: Colors.white)))])); }
+}
+class _ContactSection extends StatelessWidget {
+  const _ContactSection();
+  @override build(BuildContext context) { return Container(width: double.infinity, padding: const EdgeInsets.all(24), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: const Color(0xFFE9D5FF))), child: Column(children: [const Text("We'd love to hear from you", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)), const SizedBox(height: 8), const Text("skilernapp@gmail.com", style: TextStyle(color: Color(0xFF6A11CB), fontWeight: FontWeight.bold))])); }
+}
+class _AnimatedBottomCTA extends StatelessWidget {
+  final Animation<double> glowAnim; final Animation<double> bounceAnim; final VoidCallback onTap;
+  const _AnimatedBottomCTA({required this.glowAnim, required this.bounceAnim, required this.onTap});
+  @override build(BuildContext context) { return ScaleTransition(scale: bounceAnim, child: ElevatedButton.icon(onPressed: onTap, icon: const Icon(Icons.bolt, color: Colors.white), label: const Text("Submit Emergency Task", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)), style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6A11CB), padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 18), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(40))))); }
+}
+class _SectionTitle extends StatelessWidget {
+  final String title; const _SectionTitle({required this.title});
+  @override build(BuildContext context) { return Row(children: [Container(width: 4, height: 20, decoration: BoxDecoration(color: const Color(0xFF6A11CB), borderRadius: BorderRadius.circular(2))), const SizedBox(width: 12), Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold))]); }
+}
+
+// =============================================================================
+// LEGAL CONTENT
 // =============================================================================
 
 const String _privacyContent = """
@@ -512,64 +599,4 @@ Once the Client approves the deliverables and completes the payment, unwatermark
 
 3. Delivery Timeline
 Timelines for project completion are agreed upon during the assignment phase between the Admin and the matched Student.
-""";
-
-// =============================================================================
-// SUB-COMPONENTS (PRESERVED ORIGINAL LOGIC)
-// =============================================================================
-
-class _InteractiveStatsSection extends StatefulWidget {
-  final bool statsLoading; final List<Map<String, dynamic>> statsList; final bool isDesktop;
-  const _InteractiveStatsSection({required this.statsLoading, required this.statsList, required this.isDesktop});
-  @override State<_InteractiveStatsSection> createState() => _InteractiveStatsSectionState();
-}
-class _InteractiveStatsSectionState extends State<_InteractiveStatsSection> with TickerProviderStateMixin {
-  late List<AnimationController> _controllers; late List<Animation<double>> _scaleAnims; late List<Animation<double>> _fadeAnims;
-  @override void initState() { super.initState(); _controllers = List.generate(3, (i) => AnimationController(vsync: this, duration: Duration(milliseconds: 400 + i * 120))); _scaleAnims = _controllers.map((c) => Tween<double>(begin: 0.7, end: 1.0).animate(CurvedAnimation(parent: c, curve: Curves.elasticOut))).toList(); _fadeAnims = _controllers.map((c) => Tween<double>(begin: 0.0, end: 1.0).animate(CurvedAnimation(parent: c, curve: Curves.easeOut))).toList(); if (!widget.statsLoading) _playAll(); }
-  void _playAll() { for (int i = 0; i < _controllers.length; i++) { Future.delayed(Duration(milliseconds: i * 100), () { if (mounted) _controllers[i].forward(); }); } }
-  @override void dispose() { for (final c in _controllers) c.dispose(); super.dispose(); }
-  @override Widget build(BuildContext context) { if (widget.statsLoading) return const Center(child: CircularProgressIndicator()); return Row(children: List.generate(widget.statsList.length, (i) { final stat = widget.statsList[i]; return Expanded(child: Padding(padding: EdgeInsets.only(right: i < 2 ? 12 : 0), child: ScaleTransition(scale: _scaleAnims[i], child: FadeTransition(opacity: _fadeAnims[i], child: _StatTile(label: stat['label'], value: stat['value'], icon: stat['icon'], color: stat['color'], bgColor: stat['bgColor']))))); })); }
-}
-class _StatTile extends StatelessWidget {
-  final String label, value; final IconData icon; final Color color, bgColor;
-  const _StatTile({required this.label, required this.value, required this.icon, required this.color, required this.bgColor});
-  @override Widget build(BuildContext context) { return Container(padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 10), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.grey[100]!), boxShadow: [BoxShadow(color: color.withOpacity(0.06), blurRadius: 8, offset: const Offset(0, 4))]), child: Column(children: [Container(width: 42, height: 42, decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.circular(13)), child: Icon(icon, color: color, size: 22)), const SizedBox(height: 10), Text(value, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Colors.black87, letterSpacing: -0.5)), Text(label, style: const TextStyle(fontSize: 11, color: Colors.grey, fontWeight: FontWeight.w600))])); }
-}
-class _InteractiveWorkflowSection extends StatefulWidget {
-  final bool isDesktop; const _InteractiveWorkflowSection({required this.isDesktop});
-  @override State<_InteractiveWorkflowSection> createState() => _InteractiveWorkflowSectionState();
-}
-class _InteractiveWorkflowSectionState extends State<_InteractiveWorkflowSection> with TickerProviderStateMixin {
-  int _activeStep = 0; late AnimationController _pulseCtrl; late Animation<double> _pulseAnim;
-  static const List<Map<String, dynamic>> _steps = [
-    {'icon': Icons.edit_note_rounded, 'title': 'Post Request', 'desc': 'Easy Flow', 'detail': 'Describe your task and set a deadline. No account needed for emergency posts.', 'color': Color(0xFF6A11CB), 'bgColor': Color(0xFFF3E8FF), 'step': '01'},
-    {'icon': Icons.person_search_rounded, 'title': 'Admin Match', 'desc': 'Vetting', 'detail': 'Admin reviews requirements and hand-picks the best-fit student based on skills.', 'color': Color(0xFF2575FC), 'bgColor': Color(0xFFEFF6FF), 'step': '02'},
-    {'icon': Icons.task_alt_rounded, 'title': 'Approve Work', 'desc': 'Review', 'detail': 'Review all deliverables in one place. Only approve when you are 100% satisfied.', 'color': Color(0xFF059669), 'bgColor': Color(0xFFECFDF5), 'step': '03'},
-    {'icon': Icons.qr_code_2_rounded, 'title': 'Direct Payout', 'desc': 'Verified', 'detail': 'Payment is released directly to the student — zero middleman fees, fully admin-verified.', 'color': Color(0xFFD97706), 'bgColor': Color(0xFFFFFBEB), 'step': '04'},
-  ];
-  @override void initState() { super.initState(); _pulseCtrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 900)); _pulseAnim = Tween<double>(begin: 1.0, end: 1.08).animate(CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut)); _pulseCtrl.repeat(reverse: true); }
-  @override void dispose() { _pulseCtrl.dispose(); super.dispose(); }
-  @override Widget build(BuildContext context) { final active = _steps[_activeStep]; return Column(children: [Row(children: List.generate(_steps.length, (i) => Expanded(child: GestureDetector(onTap: () => setState(() => _activeStep = i), child: AnimatedContainer(duration: const Duration(milliseconds: 280), margin: EdgeInsets.only(right: i < 3 ? 8 : 0), padding: const EdgeInsets.symmetric(vertical: 14), decoration: BoxDecoration(color: i == _activeStep ? active['color'] : Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.grey[200]!)), child: Column(children: [Icon(_steps[i]['icon'], color: i == _activeStep ? Colors.white : _steps[i]['color'], size: 20), const SizedBox(height: 6), Text(_steps[i]['title'], style: const TextStyle(fontSize: 8, fontWeight: FontWeight.bold))])))))), const SizedBox(height: 16), Container(padding: const EdgeInsets.all(20), decoration: BoxDecoration(color: active['bgColor'], borderRadius: BorderRadius.circular(20), border: Border.all(color: (active['color'] as Color).withOpacity(0.2))), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(active['title'], style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: active['color'])), const SizedBox(height: 6), Text(active['detail'], style: const TextStyle(fontSize: 13, color: Colors.black54, height: 1.5))]))]); }
-}
-class _HeroSliderSection extends StatelessWidget {
-  final Animation<double> fadeAnim; final Animation<Offset> slideAnim; final bool isDesktop;
-  const _HeroSliderSection({required this.fadeAnim, required this.slideAnim, required this.isDesktop});
-  @override build(BuildContext context) { return FadeTransition(opacity: fadeAnim, child: SlideTransition(position: slideAnim, child: Container(height: isDesktop ? 300 : 200, width: double.infinity, decoration: BoxDecoration(borderRadius: BorderRadius.circular(24), gradient: const LinearGradient(colors: [Color(0xFF1E1B4B), Color(0xFF6A11CB)])), child: const Center(child: Text("Managed Student Talent Marketplace", textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900)))))); }
-}
-class _AnimatedAppBar extends StatelessWidget {
-  final VoidCallback onEmergencyPost; const _AnimatedAppBar({required this.onEmergencyPost});
-  @override build(BuildContext context) { return Container(margin: const EdgeInsets.all(12), padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)]), child: Row(children: [const Text('SKILERN', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Color(0xFF6A11CB))), const Spacer(), TextButton(onPressed: onEmergencyPost, child: const Text('Emergency Post', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold))), const SizedBox(width: 8), ElevatedButton(onPressed: () => Navigator.pushNamed(context, '/login'), style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6A11CB)), child: const Text('Sign In', style: TextStyle(color: Colors.white)))])); }
-}
-class _ContactSection extends StatelessWidget {
-  const _ContactSection();
-  @override build(BuildContext context) { return Container(width: double.infinity, padding: const EdgeInsets.all(24), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: const Color(0xFFE9D5FF))), child: Column(children: [const Text("We'd love to hear from you", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)), const SizedBox(height: 8), const Text("skilernapp@gmail.com", style: TextStyle(color: Color(0xFF6A11CB), fontWeight: FontWeight.bold))])); }
-}
-class _AnimatedBottomCTA extends StatelessWidget {
-  final Animation<double> glowAnim; final Animation<double> bounceAnim; final VoidCallback onTap;
-  const _AnimatedBottomCTA({required this.glowAnim, required this.bounceAnim, required this.onTap});
-  @override build(BuildContext context) { return ScaleTransition(scale: bounceAnim, child: ElevatedButton.icon(onPressed: onTap, icon: const Icon(Icons.bolt, color: Colors.white), label: const Text("Submit Emergency Task", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)), style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6A11CB), padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 18), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(40))))); }
-}
-class _SectionTitle extends StatelessWidget {
-  final String title; const _SectionTitle({required this.title});
-  @override build(BuildContext context) { return Row(children: [Container(width: 4, height: 20, decoration: BoxDecoration(color: const Color(0xFF6A11CB), borderRadius: BorderRadius.circular(2))), const SizedBox(width: 12), Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold))]); }
-}
+""";  

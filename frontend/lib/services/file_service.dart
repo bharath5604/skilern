@@ -7,24 +7,56 @@ import 'auth_service.dart';
 import '../env.dart';
 
 class FileService {
-  /// Uploads a file to the VPS Secure Vault.
-  /// [file] can be a File object (Mobile) or PlatformFile (Web).
-  /// Returns the PROTECTED URL that requires a JWT to view.
+  /// Standard Upload: Used for task deliverables and profile updates.
+  /// Requires a valid Security Token (JWT).
   static Future<String> uploadToVault(dynamic file, String fileName) async {
-    final uri = Uri.parse('${Env.apiBaseUrl}/api/files/upload');
+    final token = AuthService.token;
     
-    // 1. Create a Multipart Request
+    // Logic: Force a check for the token to prevent accidental public uploads
+    if (token == null || token.trim().isEmpty) {
+      throw Exception("Authentication required for project uploads.");
+    }
+    
+    return _performUpload(
+      file: file, 
+      fileName: fileName, 
+      path: '/api/files/upload', 
+      token: token
+    );
+  }
+
+  /// MODIFICATION: Signup Upload. 
+  /// Specifically for Student ID cards during the registration phase.
+  /// Does NOT require a token.
+  static Future<String> uploadRegistrationFile(dynamic file, String fileName) async {
+    return _performUpload(
+      file: file, 
+      fileName: fileName, 
+      path: '/api/files/upload-registration', 
+      token: null // No token sent for public registration endpoint
+    );
+  }
+
+  /// Core logic to handle the multi-part request to the VPS Secure Vault.
+  /// Handles both Web (bytes) and Mobile (filepath) logic automatically.
+  static Future<String> _performUpload({
+    required dynamic file, 
+    required String fileName, 
+    required String path, 
+    String? token
+  }) async {
+    final uri = Uri.parse('${Env.apiBaseUrl}$path');
     var request = http.MultipartRequest('POST', uri);
 
-    // 2. Attach Authorization Header (The Security Token)
-    final token = AuthService.token;
-    if (token == null) throw Exception("Authentication required for upload.");
-    request.headers['Authorization'] = 'Bearer $token';
+    // Attach Authorization Header if a token is provided
+    if (token != null) {
+      request.headers['Authorization'] = 'Bearer ${token.trim()}';
+    }
 
-    // 3. Attach the File Bits
     try {
+      // Logic: Platform-specific file attachment
       if (kIsWeb) {
-        // For Web: We must use the bytes from the PlatformFile
+        // Web: Use bytes from PlatformFile
         if (file.bytes == null) throw Exception("File data is empty");
         request.files.add(http.MultipartFile.fromBytes(
           'file',
@@ -32,34 +64,44 @@ class FileService {
           filename: fileName,
         ));
       } else {
-        // For Mobile: We use the file path
+        // Mobile: Use system file path
         request.files.add(await http.MultipartFile.fromPath(
           'file',
           file.path,
         ));
       }
 
-      // 4. Execute the Upload
+      // Execute the request
       var streamedResponse = await request.send();
       var response = await http.Response.fromStream(streamedResponse);
 
       if (response.statusCode == 200 || response.statusCode == 201) {
         final Map<String, dynamic> data = jsonDecode(response.body);
         
-        // Logic: The backend returns the unique filename (e.g. vault-123.pdf)
-        // We construct the protected viewing URL.
+        // Logic: Return the internal VPS route used for authenticated viewing
         final String savedFilename = data['filename'];
         return '${Env.apiBaseUrl}/api/files/view/$savedFilename';
       } else {
-        final errorData = jsonDecode(response.body);
-        throw Exception(errorData['message'] ?? 'Upload failed with status ${response.statusCode}');
+        // Extract server-side error if available
+        final errorMsg = _tryParseError(response.body);
+        throw Exception(errorMsg);
       }
     } catch (e) {
-      throw Exception('VPS Connection Error: $e');
+      throw Exception('VPS Storage Error: $e');
     }
   }
 
-  /// Helper to check if a URL is a VPS Vault URL
+  /// Helper to extract clean error messages from backend JSON
+  static String _tryParseError(String body) {
+    try {
+      final decoded = jsonDecode(body);
+      return decoded['message'] ?? decoded['error'] ?? 'Server Error';
+    } catch (_) {
+      return 'Upload failed (Status Code error)';
+    }
+  }
+
+  /// Utility to check if a URL belongs to the Skilern Secure Vault
   static bool isVaultUrl(String url) {
     return url.contains('/api/files/view/');
   }

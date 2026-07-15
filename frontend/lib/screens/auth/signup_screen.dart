@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; 
 
 import '../../services/auth_service.dart';
-import '../../services/file_service.dart'; // VPS Secure Upload
+import '../../services/file_service.dart'; // MODIFICATION: VPS SECURE FILE SYSTEM
 
 class SignupScreen extends StatefulWidget {
   const SignupScreen({Key? key}) : super(key: key);
@@ -134,11 +134,11 @@ class _SignupScreenState extends State<SignupScreen> with SingleTickerProviderSt
   }
 
   // ============================================================
-  // SIGNUP OTP VERIFICATION DIALOG
+  // MODIFICATION: SIGNUP OTP DIALOG
   // ============================================================
-  Future<void> _showOtpDialog(String email) async {
+  Future<void> _showOtpVerificationDialog(String email) async {
     final TextEditingController otpController = TextEditingController();
-    bool verifying = false;
+    bool isVerifying = false;
 
     await showDialog(
       context: context,
@@ -146,11 +146,11 @@ class _SignupScreenState extends State<SignupScreen> with SingleTickerProviderSt
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
-          title: const Text("Gmail Verification", style: TextStyle(fontWeight: FontWeight.bold)),
+          title: const Text("Verify Gmail", style: TextStyle(fontWeight: FontWeight.bold, color: primaryPurple)),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text("A 6-digit verification code was sent to $email. Please enter it below:"),
+              Text("A 6-digit code has been sent to $email. Please enter it to activate your account:"),
               const SizedBox(height: 20),
               TextField(
                 controller: otpController,
@@ -168,35 +168,36 @@ class _SignupScreenState extends State<SignupScreen> with SingleTickerProviderSt
           ),
           actions: [
             TextButton(
-              onPressed: verifying ? null : () => Navigator.pop(ctx), 
+              onPressed: isVerifying ? null : () => Navigator.pop(ctx), 
               child: const Text("Cancel", style: TextStyle(color: Colors.grey))
             ),
             SizedBox(
               width: 120,
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(backgroundColor: primaryPurple),
-                onPressed: verifying ? null : () async {
+                onPressed: isVerifying ? null : () async {
                   if (otpController.text.length < 6) return;
-                  setDialogState(() => verifying = true);
+                  setDialogState(() => isVerifying = true);
                   
                   try {
+                    // Call Phase 2: Create user in MongoDB
                     final res = await _authService.verifySignupOTP(email, otpController.text);
                     if (res['success'] == true) {
                       Navigator.pop(ctx);
-                      showSnack("Verification Success! You can now login.");
+                      showSnack("Welcome! Account created successfully.");
                       Navigator.pushReplacementNamed(context, "/login");
                     } else {
-                      showSnack(res['message'] ?? "Invalid Code");
+                      showSnack(res['message'] ?? "Incorrect OTP code.");
                     }
                   } catch (e) {
-                    showSnack("Error: $e");
+                    showSnack("Verification error: $e");
                   } finally {
-                    setDialogState(() => verifying = false);
+                    setDialogState(() => isVerifying = false);
                   }
                 }, 
-                child: verifying 
+                child: isVerifying 
                   ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) 
-                  : const Text("Verify", style: TextStyle(color: Colors.white)),
+                  : const Text("Verify", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
               ),
             ),
           ],
@@ -206,7 +207,7 @@ class _SignupScreenState extends State<SignupScreen> with SingleTickerProviderSt
   }
 
   // ============================================================
-  // SIGNUP SUBMISSION (PHASE 1: REQUEST OTP)
+  // SIGNUP SUBMISSION (PHASE 1: UPLOAD & REQUEST OTP)
   // ============================================================
 
   Future<void> _signup() async {
@@ -227,13 +228,23 @@ class _SignupScreenState extends State<SignupScreen> with SingleTickerProviderSt
     try {
       String idUrl = "";
       if (_idCardFile != null) {
-        // VPS Secure Upload
-        idUrl = await FileService.uploadToVault(_idCardFile!, _idCardFile!.name);
+        // ============================================================
+        // MODIFICATION: USE THE REGISTRATION-SPECIFIC UPLOAD (PUBLIC)
+        // This fixes the "Authorization Required" error for students.
+        // ============================================================
+        try {
+          idUrl = await FileService.uploadRegistrationFile(_idCardFile!, _idCardFile!.name);
+          debugPrint("ID stored securely in VPS Vault: $idUrl");
+        } catch (uploadErr) {
+          showSnack("ID upload failed: $uploadErr");
+          setState(() => _loading = false);
+          return;
+        }
       }
 
-      final email = _emailController.text.trim();
+      final String email = _emailController.text.trim();
 
-      // Trigger Phase 1: Request OTP
+      // Trigger Phase 1: Request OTP from Backend
       final res = await _authService.signup(
         _nameController.text.trim(),
         email,
@@ -252,8 +263,8 @@ class _SignupScreenState extends State<SignupScreen> with SingleTickerProviderSt
       setState(() => _loading = false);
 
       if (res["success"] == true) {
-        // Success: Prompt user for OTP
-        _showOtpDialog(email);
+        // Backend sent the mail, now show the OTP popup
+        _showOtpVerificationDialog(email);
       } else {
         showSnack(res["message"] ?? "Signup failed");
       }
