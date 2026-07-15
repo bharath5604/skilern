@@ -33,7 +33,7 @@ class Env {
   /// Set to true when moving from Test Mode to Live Mode.
   static const bool isProduction = bool.fromEnvironment(
     'IS_PRODUCTION',
-    defaultValue: false,
+    defaultValue: true,
   );
   
   /// Application Version
