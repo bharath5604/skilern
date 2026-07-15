@@ -1,9 +1,13 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:razorpay_flutter/razorpay_flutter.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:http/http.dart' as http; // MODIFICATION: For Secure Downloads
+import 'package:http/http.dart' as http;
+
+// Logic: Conditional import for Web Download support
+import 'dart:html' as html if (dart.library.io) 'package:skilern/utils/stub_html.dart';
 
 // Conditional Import for Razorpay Web Bridge
 import '../../utils/razorpay_web_bridge.dart'
@@ -54,10 +58,9 @@ class MyTasksScreenState extends State<MyTasksScreen> {
     await loadMyTasks();
     SocketService.connect();
     
-    // Logic: React instantly to payment success or student resubmissions
     SocketService.on('task_update', (data) {
       if (mounted) {
-        debugPrint("Client MyTasks: Refreshing view via Socket signal.");
+        debugPrint("Client MyTasks: Refresh signal received via Sockets.");
         loadMyTasks(isSilent: true); 
       }
     });
@@ -82,12 +85,8 @@ class MyTasksScreenState extends State<MyTasksScreen> {
       if (!mounted) return;
       setState(() => tasks = res);
 
-      // Join individual client rooms for thread isolation
       for (var t in res) {
-        if (t.id.isNotEmpty) {
-          // joins {taskId}_client sub-room by default
-          SocketService.joinTaskRoom(t.id); 
-        }
+        if (t.id.isNotEmpty) SocketService.joinTaskRoom(t.id);
       }
     } catch (e) {
       if (mounted) _showSnackBar('Failed to load tasks');
@@ -96,9 +95,6 @@ class MyTasksScreenState extends State<MyTasksScreen> {
     }
   }
 
-  // ============================================================
-  // FIXED: MODIFICATION REQUEST DIALOG
-  // ============================================================
   Future<void> _handleRequestModification(Task t) async {
     final TextEditingController reasonCtrl = TextEditingController();
     
@@ -119,7 +115,7 @@ class MyTasksScreenState extends State<MyTasksScreen> {
               maxLines: 4,
               autofocus: true,
               decoration: const InputDecoration(
-                hintText: "e.g. Please update the color to Skilern purple...",
+                hintText: "e.g. Increase font size, change the color to blue...",
                 border: OutlineInputBorder(),
               ),
             ),
@@ -131,9 +127,7 @@ class MyTasksScreenState extends State<MyTasksScreen> {
             style: ElevatedButton.styleFrom(backgroundColor: primaryPurple),
             onPressed: () {
               final text = reasonCtrl.text.trim();
-              if (text.isNotEmpty) {
-                Navigator.pop(ctx, text);
-              }
+              if (text.isNotEmpty) Navigator.pop(ctx, text);
             }, 
             child: const Text("Send", style: TextStyle(color: Colors.white))
           ),
@@ -176,7 +170,7 @@ class MyTasksScreenState extends State<MyTasksScreen> {
       final options = {
         'key': Env.razorpayKeyId,
         'amount': (amount * 100).toInt(),
-        'name': 'Skilern',
+        'name': 'Skilen',
         'description': t.title,
         'prefill': {'contact': AuthService.currentUser?.mobile ?? '', 'email': AuthService.currentUser?.email ?? ''},
       };
@@ -185,7 +179,7 @@ class MyTasksScreenState extends State<MyTasksScreen> {
   }
 
   void _onPaymentSuccessInternal() {
-    _showSnackBar("Success! Verification in progress.");
+    _showSnackBar("Success! Admin is verifying the payment.");
     loadMyTasks(isSilent: true);
   }
 
@@ -210,7 +204,7 @@ class MyTasksScreenState extends State<MyTasksScreen> {
               return Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Text('Finalizing will approve the work and enable payment.', 
+                  const Text('Finalizing will approve the student work and enable payment.', 
                     style: TextStyle(fontSize: 12, color: textMuted)),
                   const SizedBox(height: 16),
                   DropdownButton<int>(
@@ -220,7 +214,7 @@ class MyTasksScreenState extends State<MyTasksScreen> {
                     onChanged: (val) => setStateDialog(() => rating = val!),
                   ),
                   const SizedBox(height: 10),
-                  TextField(controller: _feedbackController, decoration: const InputDecoration(hintText: 'Comment (Optional)...')),
+                  TextField(controller: _feedbackController, decoration: const InputDecoration(hintText: 'Feedback (Optional)...')),
                 ],
               );
             },
@@ -234,7 +228,7 @@ class MyTasksScreenState extends State<MyTasksScreen> {
                   await taskService.sendFeedback(taskId: taskId, text: _feedbackController.text, score: rating);
                   loadMyTasks(isSilent: true);
                   Navigator.pop(dialogCtx);
-                } catch (e) { _showSnackBar("Error during approval"); }
+                } catch (e) { _showSnackBar("Error"); }
               },
               child: const Text('Approve'),
             ),
@@ -259,11 +253,16 @@ class MyTasksScreenState extends State<MyTasksScreen> {
           icon: const Icon(Icons.arrow_back_ios_new_rounded, color: primaryPurple),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text(
-          'Project Workspace',
-          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: textDark),
+        title: ShaderMask(
+          shaderCallback: (bounds) => const LinearGradient(
+            colors: [primaryPurple, secondaryPurple],
+          ).createShader(bounds),
+          child: const Text(
+            'My Active Projects',
+            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: Colors.white),
+          ),
         ),
-        actions: [IconButton(onPressed: () => loadMyTasks(), icon: const Icon(Icons.refresh_rounded, color: primaryPurple))],
+        actions: [IconButton(onPressed: loadMyTasks, icon: const Icon(Icons.refresh, color: primaryPurple))],
       ),
       body: loading && tasks.isEmpty
         ? const Center(child: CircularProgressIndicator(color: primaryPurple)) 
@@ -294,12 +293,12 @@ class MyTasksScreenState extends State<MyTasksScreen> {
           children: [
             Row(
               children: [
-                Expanded(child: Text(t.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15))),
+                Expanded(child: Text(t.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16))),
                 _buildStatusChip(t.status),
               ],
             ),
             const SizedBox(height: 6),
-            Text("Negotiated Budget: ${t.budget != null ? '₹${t.budget!.toStringAsFixed(0)}' : 'TBD'}", 
+            Text("Budget: ${t.budget != null ? '₹${t.budget!.toStringAsFixed(0)}' : 'TBD'}", 
                 style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 13)),
             
             if (hasSubmitted) ...[
@@ -309,16 +308,16 @@ class MyTasksScreenState extends State<MyTasksScreen> {
                 decoration: BoxDecoration(
                   color: isDownloadUnlocked ? Colors.green.withOpacity(0.05) : Colors.blue.withOpacity(0.05),
                   borderRadius: BorderRadius.circular(15),
-                  border: Border.all(color: isDownloadUnlocked ? Colors.green.withOpacity(0.3) : Colors.blue.withOpacity(0.3)),
+                  border: Border.all(color: isDownloadUnlocked ? Colors.green : Colors.blue.withOpacity(0.3)),
                 ),
                 child: Column(
                   children: [
                     Row(
                       children: [
-                        Icon(isDownloadUnlocked ? Icons.verified_user : Icons.lock_open_rounded, 
+                        Icon(isDownloadUnlocked ? Icons.verified_user : Icons.remove_red_eye_outlined, 
                              color: isDownloadUnlocked ? Colors.green : Colors.blue, size: 20),
                         const SizedBox(width: 8),
-                        Text(isDownloadUnlocked ? "Deliverables Ready" : "Vetting Stage (Preview Only)", 
+                        Text(isDownloadUnlocked ? "Full Files Available" : "Preview Stage (In-App Only)", 
                              style: TextStyle(fontWeight: FontWeight.bold, color: isDownloadUnlocked ? Colors.green : Colors.blue, fontSize: 13)),
                       ],
                     ),
@@ -328,13 +327,13 @@ class MyTasksScreenState extends State<MyTasksScreen> {
                       width: double.infinity,
                       child: OutlinedButton.icon(
                         onPressed: t.submissionFile == null ? null : () {
-                          // The previewer now handles the Authenticated Handshake for VPS
+                          // Secure internal viewer passes JWT automatically
                           Navigator.push(context, MaterialPageRoute(
                             builder: (_) => UnifiedPreviewScreen(url: t.submissionFile!, title: t.title)
                           ));
                         },
-                        icon: const Icon(Icons.remove_red_eye_rounded),
-                        label: const Text("View Work"),
+                        icon: const Icon(Icons.visibility),
+                        label: const Text("View Deliverables"),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: Colors.blue, side: const BorderSide(color: Colors.blue),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -346,9 +345,11 @@ class MyTasksScreenState extends State<MyTasksScreen> {
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton.icon(
-                        // MODIFICATION: Trigger internal secure download via VPS endpoint if unlocked
-                        onPressed: (isDownloadUnlocked && t.submissionFile != null) ? () => _launchSecureUrl(t.submissionFile!) : null, 
-                        icon: Icon(isDownloadUnlocked ? Icons.file_download : Icons.lock_clock),
+                        // MODIFICATION: Trigger internal secure download
+                        onPressed: (isDownloadUnlocked && t.submissionFile != null) 
+                            ? () => _launchSecureUrl(t.submissionFile!, "deliverable_${t.id}") 
+                            : null, 
+                        icon: Icon(isDownloadUnlocked ? Icons.download : Icons.lock_outline),
                         label: const Text("Save to Device"),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: isDownloadUnlocked ? primaryPurple : Colors.grey[300],
@@ -386,9 +387,9 @@ class MyTasksScreenState extends State<MyTasksScreen> {
                 child: Column(
                   children: [
                     if (t.adminReceivedPayment) ...[
-                      const Icon(Icons.check_circle_rounded, color: Colors.green, size: 40),
+                      const Icon(Icons.check_circle, color: Colors.green, size: 40),
                       const SizedBox(height: 8),
-                      const Text("Project Finalized", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
+                      const Text("Fully Verified", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
                     ] else if (t.budgetFinalized) ...[
                       const Text("Budget Finalized", style: TextStyle(fontWeight: FontWeight.bold, color: primaryPurple)),
                       const SizedBox(height: 12),
@@ -399,9 +400,9 @@ class MyTasksScreenState extends State<MyTasksScreen> {
                         label: Text("Pay ₹${(t.budget ?? 0).toStringAsFixed(0)} via Razorpay"),
                       ),
                     ] else ...[
-                      const Text("Awaiting Payment Verification", style: TextStyle(fontWeight: FontWeight.bold)),
+                      const Text("Finalize payment with Admin", style: TextStyle(fontWeight: FontWeight.bold)),
                       const SizedBox(height: 12),
-                      const Text("Contact Admin to verify your manual payment or wait for budget finalization.", 
+                      const Text("Wait for Admin to verify your manual payment or wait for budget finalization.", 
                         textAlign: TextAlign.center, style: TextStyle(fontSize: 11, color: textMuted)),
                     ],
                   ],
@@ -432,14 +433,40 @@ class MyTasksScreenState extends State<MyTasksScreen> {
 
   void _showSnackBar(String m) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m), behavior: SnackBarBehavior.floating));
   
-  /// MODIFICATION: Secure Download aware launcher
-  Future<void> _launchSecureUrl(String url) async { 
-    // Logic: Since VPS requires headers, standard browser launching might fail.
-    // For now, we launch the URL. If you encounter 401s, we will implement
-    // an authenticated downloader next.
-    final Uri u = Uri.parse(url); 
-    if (await canLaunchUrl(u)) {
-      await launchUrl(u, mode: LaunchMode.externalApplication); 
+  // ============================================================
+  // MODIFICATION: AUTHENTICATED SECURE DOWNLOAD HANDLER
+  // ============================================================
+  Future<void> _launchSecureUrl(String url, String fileName) async {
+    try {
+      _showSnackBar("Preparing secure download...");
+      
+      // 1. Fetch file bytes with Security Token (JWT)
+      final response = await http.get(
+        Uri.parse(url),
+        headers: { 'Authorization': 'Bearer ${AuthService.token}' },
+      );
+
+      if (response.statusCode == 200) {
+        if (kIsWeb) {
+          // Logic for Web: Trigger local browser download via Blob
+          final blob = html.Blob([response.bodyBytes]);
+          final url = html.Url.createObjectUrlFromBlob(blob);
+          final anchor = html.AnchorElement(href: url)
+            ..setAttribute("download", "$fileName.pdf") // Adjust extension if necessary
+            ..click();
+          html.Url.revokeObjectUrl(url);
+        } else {
+          // Logic for Mobile: Since private storage is complex for system browsers,
+          // it is safer to preview the work and then trigger external launch if necessary.
+          // For now, we use standard launch which may require a shared browser session.
+          final Uri u = Uri.parse(url); 
+          if (await canLaunchUrl(u)) await launchUrl(u, mode: LaunchMode.externalApplication); 
+        }
+      } else {
+        _showSnackBar("Access Denied: You are not authorized for this file.");
+      }
+    } catch (e) {
+      _showSnackBar("Download error: $e");
     }
   }
 }

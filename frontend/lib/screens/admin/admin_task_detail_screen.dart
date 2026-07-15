@@ -3,6 +3,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../services/admin_service.dart';
 import '../../services/admin_payment_service.dart'; 
 import '../../services/socketservice.dart'; 
+import '../../services/auth_service.dart'; 
 import '../common/unified_preview_screen.dart'; // MODIFICATION: IMPORTED PREVIEWER
 
 class AdminTaskDetailScreen extends StatefulWidget {
@@ -417,12 +418,23 @@ class _AdminTaskDetailScreenState extends State<AdminTaskDetailScreen> {
           const Text('STUDENT SUBMISSION', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: Colors.green)),
           const SizedBox(height: 12),
           
-          // MODIFICATION: Manual visibility toggle removed.
-          // Logic: Downloads are now auto-unlocked upon verified payment.
+          // ============================================================
+          // MODIFICATION: USE INTERNAL PREVIEWER INSTEAD OF BROWSER
+          // ============================================================
           ElevatedButton.icon(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.green, minimumSize: const Size(double.infinity, 45)), 
-            onPressed: () => _openUrl(submission['fileUrl']), 
-            icon: const Icon(Icons.file_open), 
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => UnifiedPreviewScreen(
+                    url: submission['fileUrl'], 
+                    title: "Reviewing: ${_safeString(_taskData['title'])}"
+                  ),
+                ),
+              );
+            }, 
+            icon: const Icon(Icons.remove_red_eye_rounded), 
             label: const Text("Admin Quality Check")
           ),
         ],

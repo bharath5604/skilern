@@ -1,14 +1,15 @@
 import 'dart:io' show File;
 import 'package:file_picker/file_picker.dart';
-import 'package:firebase_storage/firebase_storage.dart' as fstorage;
+// REMOVED: import 'package:firebase_storage/firebase_storage.dart' as fstorage; 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // REQUIRED FOR KEYBOARD LISTENER
+import 'package:flutter/services.dart'; 
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../services/auth_service.dart';
 import '../../services/message_service.dart';
 import '../../services/socketservice.dart';
+import '../../services/file_service.dart'; // MODIFICATION: IMPORT VPS FILE SERVICE
 
 /// Task-specific chat screen supporting dynamic real-time messaging
 /// across Admin, Client, and Student roles with strict thread isolation.
@@ -32,8 +33,6 @@ class _TaskChatScreenState extends State<TaskChatScreen> {
   final MessageService _service = MessageService();
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scrollController = ScrollController();
-  
-  // MODIFICATION: FocusNode to keep the cursor in the text field after sending
   final FocusNode _inputFocusNode = FocusNode(); 
 
   List<Map<String, dynamic>> _messages = [];
@@ -61,7 +60,6 @@ class _TaskChatScreenState extends State<TaskChatScreen> {
     // ============================================================
     SocketService.connect();
     
-    // 1. Identify which thread ID this specific screen instance manages
     String? currentThreadStudentId;
     final String? myRole = AuthService.role?.toLowerCase();
 
@@ -71,16 +69,14 @@ class _TaskChatScreenState extends State<TaskChatScreen> {
       currentThreadStudentId = widget.peerStudentId;
     }
 
-    // 2. Join the targeted sub-room (taskId_client or taskId_student_ID)
     SocketService.joinTaskRoom(widget.taskId, studentId: currentThreadStudentId);
 
-    // 3. Setup Listener with "Leak Protection"
     SocketService.socket!.on('new_message', (data) {
       if (mounted) {
         final currentUserId = AuthService.userId;
         final newMessage = _safeMap(data);
 
-        // Inspect metadata: Block if message studentId doesn't match current thread
+        // --- THE LEAK PROTECTOR ---
         final String? msgStudentId = newMessage['student']?.toString();
         if (msgStudentId != currentThreadStudentId) {
           debugPrint("TaskChat: Blocked real-time message leak from another thread.");
@@ -110,7 +106,7 @@ class _TaskChatScreenState extends State<TaskChatScreen> {
     SocketService.socket!.off('new_message');
     _controller.dispose();
     _scrollController.dispose();
-    _inputFocusNode.dispose(); // CLEANUP FOCUS NODE
+    _inputFocusNode.dispose(); 
     super.dispose();
   }
 
@@ -154,7 +150,7 @@ class _TaskChatScreenState extends State<TaskChatScreen> {
         _scrollToBottom(animated: false);
       }
     } catch (e) {
-      if (mounted) _showSnackBar('Failed to load history');
+      if (mounted) _showSnackBar('Failed to load chat history');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -180,8 +176,6 @@ class _TaskChatScreenState extends State<TaskChatScreen> {
         setState(() => _messages.add(_safeMap(msg)));
         _controller.clear();
         _scrollToBottom();
-        
-        // MODIFICATION: Keep keyboard/focus active for seamless typing on Desktop
         _inputFocusNode.requestFocus(); 
       }
     } catch (e) {
@@ -191,26 +185,35 @@ class _TaskChatScreenState extends State<TaskChatScreen> {
     }
   }
 
+  // ============================================================
+  // MODIFICATION: VPS SECURE FILE UPLOAD (Fixes CORS Net::ERR_FAILED)
+  // ============================================================
   Future<void> _pickAndSendFile() async {
     try {
       setState(() => _sendingFile = true);
       final result = await FilePicker.platform.pickFiles(allowMultiple: false, withData: true);
-      if (result == null || result.files.isEmpty) { setState(() => _sendingFile = false); return; }
 
-      final picked = result.files.first;
-      final String cloudName = 'chat_${DateTime.now().millisecondsSinceEpoch}_${picked.name}';
-      final storageRef = fstorage.FirebaseStorage.instance.ref().child('chat_attachments').child(cloudName);
-
-      if (kIsWeb) {
-        await storageRef.putData(picked.bytes!, fstorage.SettableMetadata(contentType: _guessContentType(picked.name)));
-      } else {
-        await storageRef.putFile(File(picked.path!));
+      if (result == null || result.files.isEmpty) {
+        setState(() => _sendingFile = false);
+        return;
       }
 
-      final url = await storageRef.getDownloadURL();
-      await _send(fileUrl: url, fileName: picked.name);
+      final picked = result.files.first;
+      if (picked.size > 15 * 1024 * 1024) { 
+        _showSnackBar('File too large (Max 15MB)');
+        setState(() => _sendingFile = false);
+        return;
+      }
+
+      // Logic: Hit the VPS Secure Vault instead of Firebase
+      // This uses a standard HTTP Multipart request which bypasses CORS net errors.
+      final String secureVpsUrl = await FileService.uploadToVault(picked, picked.name);
+
+      // Construct and send the message with the VPS link
+      await _send(fileUrl: secureVpsUrl, fileName: picked.name);
+
     } catch (e) {
-      if (mounted) _showSnackBar('File upload failed');
+      if (mounted) _showSnackBar('VPS Upload failed: $e');
     } finally {
       if (mounted) setState(() => _sendingFile = false);
     }
@@ -244,16 +247,11 @@ class _TaskChatScreenState extends State<TaskChatScreen> {
     return '$hour:$min $ampm';
   }
 
-  String _guessContentType(String n) {
-    final ext = n.split('.').last.toLowerCase();
-    if (ext == 'pdf') return 'application/pdf';
-    if (['jpg', 'jpeg', 'png', 'webp'].contains(ext)) return 'image/jpeg';
-    return 'application/octet-stream';
-  }
-
   Future<void> _openAttachment(String u) async {
     final Uri uri = Uri.parse(u);
-    if (await canLaunchUrl(uri)) await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -340,15 +338,11 @@ class _TaskChatScreenState extends State<TaskChatScreen> {
     );
   }
 
-  // ============================================================
-  // MODIFICATION: DESKTOP-AWARE INPUT BAR
-  // ============================================================
   Widget _buildInputBar() {
     return Container(
       decoration: const BoxDecoration(color: Colors.white, border: Border(top: BorderSide(color: border))),
       padding: const EdgeInsets.fromLTRB(10, 10, 10, 12),
       child: SafeArea(
-        top: false,
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
@@ -364,22 +358,19 @@ class _TaskChatScreenState extends State<TaskChatScreen> {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14),
                 decoration: BoxDecoration(color: const Color(0xFFF9FAFB), borderRadius: BorderRadius.circular(18), border: Border.all(color: border)),
-                // MODIFICATION: Intercept physical Enter key events
                 child: KeyboardListener(
                   focusNode: FocusNode(), 
                   onKeyEvent: (event) {
-                    if (event is KeyDownEvent && 
-                        event.logicalKey == LogicalKeyboardKey.enter && 
-                        !HardwareKeyboard.instance.isShiftPressed) {
+                    if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.enter && !HardwareKeyboard.instance.isShiftPressed) {
                       _send();
                     }
                   },
                   child: TextField(
                     controller: _controller,
-                    focusNode: _inputFocusNode, // Link focus node
+                    focusNode: _inputFocusNode, 
                     minLines: 1, 
                     maxLines: 4, 
-                    textInputAction: TextInputAction.send, // Mobile "Send" button icon
+                    textInputAction: TextInputAction.send, 
                     decoration: const InputDecoration(hintText: 'Type a message...', border: InputBorder.none),
                     onSubmitted: (_) => _send(),
                   ),
@@ -392,7 +383,7 @@ class _TaskChatScreenState extends State<TaskChatScreen> {
               borderRadius: BorderRadius.circular(18),
               child: Container(
                 width: 48, height: 48,
-                decoration: BoxDecoration(color: _sending ? primaryPurple.withOpacity(0.6) : primaryPurple, borderRadius: BorderRadius.circular(18)),
+                decoration: BoxDecoration(color: _sending ? _TaskChatScreenState.primaryPurple.withOpacity(0.6) : _TaskChatScreenState.primaryPurple, borderRadius: BorderRadius.circular(18)),
                 child: _sending ? const Padding(padding: EdgeInsets.all(14), child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Icon(Icons.send_rounded, color: Colors.white, size: 20),
               ),
             ),
@@ -410,7 +401,6 @@ class _TaskChatScreenState extends State<TaskChatScreen> {
           Icon(Icons.chat_bubble_outline_rounded, size: 60, color: Colors.grey[300]),
           const SizedBox(height: 16),
           const Text('No messages yet', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: textMuted)),
-          const SizedBox(height: 8),
           const Text('Start the conversation!', style: TextStyle(fontSize: 12, color: Colors.grey)),
         ],
       ),

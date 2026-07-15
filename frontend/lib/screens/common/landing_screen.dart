@@ -8,7 +8,7 @@ import '../../services/task_service.dart';
 import '../../constants/domains.dart';
 
 // =============================================================================
-// NEW: SEPARATE POLICY PAGE (For Google Play Compliance)
+// SEPARATE POLICY PAGE (For Google Play Compliance)
 // =============================================================================
 class PolicyPage extends StatelessWidget {
   final String title;
@@ -22,8 +22,8 @@ class PolicyPage extends StatelessWidget {
       appBar: AppBar(
         elevation: 0.5,
         backgroundColor: Colors.white,
-        title: Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87)),
         centerTitle: true,
+        title: Text(title, style: const TextStyle(color: Colors.black87, fontSize: 16, fontWeight: FontWeight.bold)),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Color(0xFF6A11CB)),
           onPressed: () => Navigator.pop(context),
@@ -33,28 +33,29 @@ class PolicyPage extends StatelessWidget {
         color: const Color(0xFFF5F7FB),
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
-          child: Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(24),
-              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 15)],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF6A11CB))),
-                const SizedBox(height: 8),
-                const Text("Last updated: July 9, 2026", style: TextStyle(color: Colors.grey, fontSize: 11)),
-                const Divider(height: 40),
-                Text(
-                  content,
-                  style: const TextStyle(fontSize: 14, height: 1.7, color: Colors.black87),
+          child: Column(
+            children: [
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(32),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 20)],
                 ),
-                const SizedBox(height: 40),
-              ],
-            ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: Color(0xFF6A11CB))),
+                    const SizedBox(height: 8),
+                    const Text("Last updated: July 15, 2026", style: TextStyle(color: Colors.grey, fontSize: 12)),
+                    const Divider(height: 40),
+                    Text(content, style: const TextStyle(fontSize: 15, height: 1.8, color: Colors.black87)),
+                    const SizedBox(height: 40),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -74,7 +75,7 @@ class _LandingScreenState extends State<LandingScreen>
   static const Color primaryPurple = Color(0xFF6A11CB);
   static const Color secondaryPurple = Color(0xFF2575FC);
   static const Color lightPurple = Color(0xFFF3E8FF);
-  static const Color deepBg = Color(0xFF1A1A2E); 
+  static const Color deepBg = Color(0xFF1A1A2E);
 
   late final AnimationController _fadeController;
   late final AnimationController _slideController;
@@ -97,6 +98,9 @@ class _LandingScreenState extends State<LandingScreen>
     'Machine Learning', 'Data Science', 'UI/UX Design', 'Databases',
   ];
 
+  // ============================================================
+  // LOGIC: DYNAMIC STATS MAPPING
+  // ============================================================
   List<Map<String, dynamic>> get _statsList => [
     {
       'label': 'Students',
@@ -114,7 +118,7 @@ class _LandingScreenState extends State<LandingScreen>
     },
     {
       'label': 'Active Tasks',
-      'value': _stats != null ? '${_stats!['Tasks']}' : '--',
+      'value': _stats != null ? '${_stats!['tasks']}' : '--', // FIXED: Changed 'Tasks' to 'tasks'
       'icon': Icons.assignment_outlined,
       'color': const Color(0xFF059669),
       'bgColor': const Color(0xFFECFDF5),
@@ -149,7 +153,12 @@ class _LandingScreenState extends State<LandingScreen>
       final s = await _statsService.getStats();
       if (!mounted) return;
       setState(() {
-        _stats = {'students': s['students'] ?? 0, 'clients': s['clients'] ?? 0, 'Tasks': s['tasks'] ?? 0};
+        // Logic: Storing backend response into local state
+        _stats = {
+          'students': s['students'] ?? 0, 
+          'clients': s['clients'] ?? 0, 
+          'tasks': s['tasks'] ?? 0 // FIXED: Consistency check
+        };
         _statsLoading = false;
       });
     } catch (e) {
@@ -190,10 +199,8 @@ class _LandingScreenState extends State<LandingScreen>
                 const Text("Emergency Task Post", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: primaryPurple)),
                 const Text("Fill details for direct student matching by Admin.", style: TextStyle(fontSize: 13, color: Colors.grey)),
                 const SizedBox(height: 24),
-
                 _formField(titleCtrl, "Task Title", Icons.title),
                 _formField(descCtrl, "Deliverables & Description", Icons.description, maxLines: 3),
-
                 Row(
                   children: [
                     Expanded(child: _formField(nameCtrl, "Your Name", Icons.person)),
@@ -201,7 +208,6 @@ class _LandingScreenState extends State<LandingScreen>
                     Expanded(child: _formField(mobileCtrl, "WhatsApp/Mobile", Icons.phone, keyboard: TextInputType.phone)),
                   ],
                 ),
-
                 Row(
                   children: [
                     Expanded(
@@ -222,7 +228,6 @@ class _LandingScreenState extends State<LandingScreen>
                   ],
                 ),
                 const SizedBox(height: 16),
-
                 const Text("Required Skills (Help us match the right talent)", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: primaryPurple)),
                 const SizedBox(height: 10),
                 Wrap(
@@ -239,7 +244,6 @@ class _LandingScreenState extends State<LandingScreen>
                   }).toList(),
                 ),
                 const SizedBox(height: 16),
-
                 TextField(
                   controller: deadlineCtrl,
                   readOnly: true,
@@ -249,7 +253,6 @@ class _LandingScreenState extends State<LandingScreen>
                   },
                   decoration: _inputDeco("Deadline", Icons.calendar_today),
                 ),
-
                 const SizedBox(height: 30),
                 SizedBox(
                   width: double.infinity,
@@ -264,13 +267,8 @@ class _LandingScreenState extends State<LandingScreen>
                       setSheetState(() => isSubmitting = true);
                       try {
                         await _taskService.createGuestTask(
-                          title: titleCtrl.text,
-                          description: descCtrl.text,
-                          guestName: nameCtrl.text,
-                          guestMobile: mobileCtrl.text,
-                          deadline: deadlineCtrl.text,
-                          domain: selectedDomain,
-                          requiredSkills: selectedSkills.toList(),
+                          title: titleCtrl.text, description: descCtrl.text, guestName: nameCtrl.text, guestMobile: mobileCtrl.text,
+                          deadline: deadlineCtrl.text, domain: selectedDomain, requiredSkills: selectedSkills.toList(),
                         );
                         Navigator.pop(ctx);
                         _showSuccessDialog();
@@ -302,36 +300,15 @@ class _LandingScreenState extends State<LandingScreen>
   }
 
   void _showSuccessDialog() {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Icon(Icons.check_circle, color: Colors.green, size: 50),
-        content: const Text("Request Received! Our Admin will contact you shortly.", textAlign: TextAlign.center),
-        actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Got it"))],
-      ),
-    );
+    showDialog(context: context, builder: (ctx) => AlertDialog(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)), title: const Icon(Icons.check_circle, color: Colors.green, size: 50), content: const Text("Request Received! Our Admin will contact you shortly.", textAlign: TextAlign.center), actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Got it"))]));
   }
 
   Widget _formField(TextEditingController ctrl, String hint, IconData icon, {int maxLines = 1, TextInputType keyboard = TextInputType.text}) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
-      child: TextField(
-        controller: ctrl,
-        maxLines: maxLines,
-        keyboardType: keyboard,
-        decoration: _inputDeco(hint, icon),
-      ),
-    );
+    return Padding(padding: const EdgeInsets.only(bottom: 16), child: TextField(controller: ctrl, maxLines: maxLines, keyboardType: keyboard, decoration: _inputDeco(hint, icon)));
   }
 
   InputDecoration _inputDeco(String hint, IconData icon) {
-    return InputDecoration(
-      hintText: hint, prefixIcon: Icon(icon, color: primaryPurple, size: 20),
-      filled: true, fillColor: Colors.grey[50], hintStyle: const TextStyle(fontSize: 13),
-      border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide(color: Colors.grey[200]!)),
-      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide(color: Colors.grey[200]!)),
-    );
+    return InputDecoration(hintText: hint, prefixIcon: Icon(icon, color: primaryPurple, size: 20), filled: true, fillColor: Colors.grey[50], border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide(color: Colors.grey[200]!)));
   }
 
   // ============================================================
@@ -348,7 +325,6 @@ class _LandingScreenState extends State<LandingScreen>
           const SizedBox(height: 8),
           const Text("Managed student marketplace connecting businesses with university expertise.", textAlign: TextAlign.center, style: TextStyle(color: Colors.white54, fontSize: 13, height: 1.4)),
           const SizedBox(height: 32),
-          
           Wrap(
             alignment: WrapAlignment.center,
             spacing: 24, runSpacing: 16,
@@ -359,13 +335,12 @@ class _LandingScreenState extends State<LandingScreen>
               _footerLink("Delivery Policy", _deliveryContent),
             ],
           ),
-          
           const SizedBox(height: 40),
           const Divider(color: Colors.white10, thickness: 1),
           const SizedBox(height: 24),
           const Text("© 2024 KRR Innovations. All rights reserved.", style: TextStyle(color: Colors.white30, fontSize: 11, fontWeight: FontWeight.w500)),
           const SizedBox(height: 12),
-          const Text("Support: skilernapp@gmail.com\nRegistered Address: Vijayawada, Andhra Pradesh, India", textAlign: TextAlign.center, style: TextStyle(color: Colors.white24, fontSize: 10, height: 1.6)),
+          const Text("Support: krrinnovations@gmail.com\nRegistered Address: Vijayawada, Andhra Pradesh, India", textAlign: TextAlign.center, style: TextStyle(color: Colors.white24, fontSize: 10, height: 1.6)),
         ],
       ),
     );
@@ -439,7 +414,7 @@ class _LandingScreenState extends State<LandingScreen>
 }
 
 // =============================================================================
-// HERO SLIDER SECTION (RESTORED)
+// HERO SLIDER (RESTORED ORIGINAL IMAGE SLIDES & ANIMATIONS)
 // =============================================================================
 class _HeroSliderSection extends StatefulWidget {
   final Animation<double> fadeAnim;
@@ -447,28 +422,42 @@ class _HeroSliderSection extends StatefulWidget {
   final bool isDesktop;
   const _HeroSliderSection({required this.fadeAnim, required this.slideAnim, required this.isDesktop});
 
-  @override
-  State<_HeroSliderSection> createState() => _HeroSliderSectionState();
+  @override State<_HeroSliderSection> createState() => _HeroSliderSectionState();
 }
 
 class _HeroSliderSectionState extends State<_HeroSliderSection> {
   final List<Map<String, dynamic>> _slides = [
-    {'img': 'https://images.unsplash.com/photo-1522202176988-66273c2fd55f?w=800', 'tag': 'Talent Network', 'h': 'Vetted Student Talent,\nAssigned Directly.'},
-    {'img': 'https://images.unsplash.com/photo-1531482615713-2afd69097998?w=800', 'tag': 'Fast Matching', 'h': 'Post a Task.\nGet Matched in Hours.'},
-    {'img': 'https://images.unsplash.com/photo-1519389950473-47ba0277781c?w=800', 'tag': 'Quality Work', 'h': 'Review Deliverables.\nPay Only on Approval.'},
+    {'imageUrl': 'https://images.unsplash.com/photo-1522202176988-66273c2fd55f?w=800&q=80', 'tag': 'Talent Network', 'headline': 'Vetted Student Talent,\nAssigned Directly.'},
+    {'imageUrl': 'https://images.unsplash.com/photo-1531482615713-2afd69097998?w=800&q=80', 'tag': 'Fast Matching', 'headline': 'Post a Task.\nGet Matched in Hours.'},
+    {'imageUrl': 'https://images.unsplash.com/photo-1519389950473-47ba0277781c?w=800&q=80', 'tag': 'Quality Work', 'headline': 'Review Deliverables.\nPay Only on Approval.'},
   ];
   int _currentIndex = 0;
   late PageController _pageController;
+  Timer? _timer;
+
   @override
-  void initState() { super.initState(); _pageController = PageController(); Timer.periodic(const Duration(seconds: 4), (t) { if (mounted) { _currentIndex = (_currentIndex + 1) % _slides.length; _pageController.animateToPage(_currentIndex, duration: const Duration(milliseconds: 600), curve: Curves.easeInOut); } }); }
+  void initState() {
+    super.initState();
+    _pageController = PageController();
+    _timer = Timer.periodic(const Duration(seconds: 4), (_) {
+      if (mounted) {
+        _currentIndex = (_currentIndex + 1) % _slides.length;
+        _pageController.animateToPage(_currentIndex, duration: const Duration(milliseconds: 600), curve: Curves.easeInOutCubic);
+      }
+    });
+  }
+
+  @override
+  void dispose() { _timer?.cancel(); _pageController.dispose(); super.dispose(); }
+
   @override
   Widget build(BuildContext context) {
-    return FadeTransition(opacity: widget.fadeAnim, child: SlideTransition(position: widget.slideAnim, child: ClipRRect(borderRadius: BorderRadius.circular(24), child: SizedBox(height: widget.isDesktop ? 340 : 260, child: PageView.builder(controller: _pageController, itemCount: _slides.length, itemBuilder: (c, i) => Stack(fit: StackFit.expand, children: [Image.network(_slides[i]['img'], fit: BoxFit.cover), Container(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.centerLeft, end: Alignment.centerRight, colors: [Colors.black87, Colors.black54, Colors.transparent], stops: const [0, 0.4, 0.9]))), Padding(padding: const EdgeInsets.all(24), child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), decoration: BoxDecoration(color: Colors.white12, borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.white24)), child: Text(_slides[i]['tag'], style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold))), const SizedBox(height: 12), Text(_slides[i]['h'], style: TextStyle(color: Colors.white, fontSize: widget.isDesktop ? 32 : 24, fontWeight: FontWeight.w900))]))]))))));
+    return FadeTransition(opacity: widget.fadeAnim, child: SlideTransition(position: widget.slideAnim, child: ClipRRect(borderRadius: BorderRadius.circular(24), child: SizedBox(height: widget.isDesktop ? 340 : 260, child: PageView.builder(controller: _pageController, itemCount: _slides.length, itemBuilder: (context, index) => Stack(fit: StackFit.expand, children: [Image.network(_slides[index]['imageUrl'], fit: BoxFit.cover), Container(decoration: BoxDecoration(gradient: LinearGradient(colors: [Colors.black87, Colors.transparent], stops: const [0.1, 0.8]))), Padding(padding: const EdgeInsets.all(24), child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4), decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(20)), child: Text(_slides[index]['tag'], style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold))), const SizedBox(height: 12), Text(_slides[index]['headline'], style: TextStyle(color: Colors.white, fontSize: widget.isDesktop ? 32 : 24, fontWeight: FontWeight.w900))]))]))))));
   }
 }
 
 // =============================================================================
-// INTERACTIVE STATS SECTION (RESTORED)
+// INTERACTIVE STATS (RESTORED ORIGINAL DESIGN & LOGIC)
 // =============================================================================
 class _InteractiveStatsSection extends StatefulWidget {
   final bool statsLoading; final List<Map<String, dynamic>> statsList; final bool isDesktop;
@@ -477,7 +466,13 @@ class _InteractiveStatsSection extends StatefulWidget {
 }
 class _InteractiveStatsSectionState extends State<_InteractiveStatsSection> with TickerProviderStateMixin {
   late List<AnimationController> _controllers; late List<Animation<double>> _scaleAnims; late List<Animation<double>> _fadeAnims;
-  @override void initState() { super.initState(); _controllers = List.generate(3, (i) => AnimationController(vsync: this, duration: Duration(milliseconds: 400 + i * 120))); _scaleAnims = _controllers.map((c) => Tween<double>(begin: 0.7, end: 1.0).animate(CurvedAnimation(parent: c, curve: Curves.elasticOut))).toList(); _fadeAnims = _controllers.map((c) => Tween<double>(begin: 0.0, end: 1.0).animate(CurvedAnimation(parent: c, curve: Curves.easeOut))).toList(); if (!widget.statsLoading) _playAll(); }
+  @override void initState() {
+    super.initState();
+    _controllers = List.generate(3, (i) => AnimationController(vsync: this, duration: Duration(milliseconds: 400 + i * 120)));
+    _scaleAnims = _controllers.map((c) => Tween<double>(begin: 0.7, end: 1.0).animate(CurvedAnimation(parent: c, curve: Curves.elasticOut))).toList();
+    _fadeAnims = _controllers.map((c) => Tween<double>(begin: 0.0, end: 1.0).animate(CurvedAnimation(parent: c, curve: Curves.easeOut))).toList();
+    if (!widget.statsLoading) _playAll();
+  }
   void _playAll() { for (int i = 0; i < _controllers.length; i++) { Future.delayed(Duration(milliseconds: i * 100), () { if (mounted) _controllers[i].forward(); }); } }
   @override void dispose() { for (final c in _controllers) c.dispose(); super.dispose(); }
   @override Widget build(BuildContext context) { if (widget.statsLoading) return const Center(child: CircularProgressIndicator()); return Row(children: List.generate(widget.statsList.length, (i) { final stat = widget.statsList[i]; return Expanded(child: Padding(padding: EdgeInsets.only(right: i < 2 ? 12 : 0), child: ScaleTransition(scale: _scaleAnims[i], child: FadeTransition(opacity: _fadeAnims[i], child: _StatTile(label: stat['label'], value: stat['value'], icon: stat['icon'], color: stat['color'], bgColor: stat['bgColor']))))); })); }
@@ -489,7 +484,7 @@ class _StatTile extends StatelessWidget {
 }
 
 // =============================================================================
-// SUB-COMPONENTS (PRESERVED)
+// ORIGINAL WORKFLOW (PRESERVED)
 // =============================================================================
 class _InteractiveWorkflowSection extends StatefulWidget {
   final bool isDesktop; const _InteractiveWorkflowSection({required this.isDesktop});
@@ -507,96 +502,65 @@ class _InteractiveWorkflowSectionState extends State<_InteractiveWorkflowSection
   @override void dispose() { _pulseCtrl.dispose(); super.dispose(); }
   @override Widget build(BuildContext context) { final active = _steps[_activeStep]; return Column(children: [Row(children: List.generate(_steps.length, (i) => Expanded(child: GestureDetector(onTap: () => setState(() => _activeStep = i), child: AnimatedContainer(duration: const Duration(milliseconds: 280), margin: EdgeInsets.only(right: i < 3 ? 8 : 0), padding: const EdgeInsets.symmetric(vertical: 14), decoration: BoxDecoration(color: i == _activeStep ? active['color'] : Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.grey[200]!)), child: Column(children: [Icon(_steps[i]['icon'], color: i == _activeStep ? Colors.white : _steps[i]['color'], size: 20), const SizedBox(height: 6), Text(_steps[i]['title'], style: const TextStyle(fontSize: 8, fontWeight: FontWeight.bold))])))))), const SizedBox(height: 16), Container(padding: const EdgeInsets.all(20), width: double.infinity, decoration: BoxDecoration(color: active['bgColor'], borderRadius: BorderRadius.circular(20)), child: Text(active['title'], style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: active['color'])))]); }
 }
+
 class _AnimatedAppBar extends StatelessWidget {
   final VoidCallback onEmergencyPost; const _AnimatedAppBar({required this.onEmergencyPost});
-  @override build(BuildContext context) { return Container(margin: const EdgeInsets.all(12), padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)]), child: Row(children: [const Text('SKILERN', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Color(0xFF6A11CB))), const Spacer(), TextButton(onPressed: onEmergencyPost, child: const Text('Emergency Post', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold))), const SizedBox(width: 8), ElevatedButton(onPressed: () => Navigator.pushNamed(context, '/login'), style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6A11CB)), child: const Text('Sign In', style: TextStyle(color: Colors.white)))])); }
+  @override Widget build(BuildContext context) { return Container(margin: const EdgeInsets.all(12), padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)]), child: Row(children: [const Text('SKILERN', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Color(0xFF6A11CB))), const Spacer(), TextButton(onPressed: onEmergencyPost, child: const Text('Emergency Post', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold))), const SizedBox(width: 8), ElevatedButton(onPressed: () => Navigator.pushNamed(context, '/login'), style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6A11CB)), child: const Text('Sign In', style: TextStyle(color: Colors.white)))])); }
 }
+
 class _ContactSection extends StatelessWidget {
   const _ContactSection();
-  @override build(BuildContext context) { return Container(width: double.infinity, padding: const EdgeInsets.all(24), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: const Color(0xFFE9D5FF))), child: Column(children: [const Text("We'd love to hear from you", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)), const SizedBox(height: 8), const Text("skilernapp@gmail.com", style: TextStyle(color: Color(0xFF6A11CB), fontWeight: FontWeight.bold))])); }
+  @override Widget build(BuildContext context) { return Container(width: double.infinity, padding: const EdgeInsets.all(24), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: const Color(0xFFE9D5FF))), child: Column(children: [const Text("We'd love to hear from you", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)), const SizedBox(height: 8), const Text("krrinnovations@gmail.com", style: TextStyle(color: Color(0xFF6A11CB), fontWeight: FontWeight.bold))])); }
 }
+
 class _AnimatedBottomCTA extends StatelessWidget {
   final Animation<double> glowAnim; final Animation<double> bounceAnim; final VoidCallback onTap;
   const _AnimatedBottomCTA({required this.glowAnim, required this.bounceAnim, required this.onTap});
-  @override build(BuildContext context) { return ScaleTransition(scale: bounceAnim, child: ElevatedButton.icon(onPressed: onTap, icon: const Icon(Icons.bolt, color: Colors.white), label: const Text("Submit Emergency Task", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)), style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6A11CB), padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 18), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(40))))); }
+  @override Widget build(BuildContext context) { return ScaleTransition(scale: bounceAnim, child: ElevatedButton.icon(onPressed: onTap, icon: const Icon(Icons.bolt, color: Colors.white), label: const Text("Submit Emergency Task", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)), style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6A11CB), padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 18), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(40))))); }
 }
+
 class _SectionTitle extends StatelessWidget {
   final String title; const _SectionTitle({required this.title});
   @override build(BuildContext context) { return Row(children: [Container(width: 4, height: 20, decoration: BoxDecoration(color: const Color(0xFF6A11CB), borderRadius: BorderRadius.circular(2))), const SizedBox(width: 12), Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold))]); }
 }
 
 // =============================================================================
-// LEGAL CONTENT
+// LEGAL CONTENT (FINALIZED)
 // =============================================================================
 
 const String _privacyContent = """
-Privacy Policy
-Last updated: July 9, 2026
+Privacy Policy for Skilern
+Last updated: July 15, 2026
 
-At Skilern, we take your privacy seriously. We only collect the information we actually need to make the platform work for you, and we promise to treat your data with respect.
-
-1. What We Collect
-- When you sign up: We ask for basics like your name, email, phone number, and (if you are a Student) what skills you have.
-- When you use "Emergency Work": Even if you don't create an account, we need an email or phone number so we can actually send you the finished work.
-- When you pay or get paid: We collect necessary billing and payment details to make sure transactions go through smoothly.
-
-2. Why We Need It
-We use data to help our Admins figure out which Student is the perfect match for a Client's task, send you notifications, and process payments securely.
-
-3. Sharing
-We do not sell your personal data to anyone. Information is shared only between the assigned Student and Client for a specific task to facilitate communication.
+At Skilern, we take your privacy seriously. We only collect information to make the platform work for you.
+1. What We Collect: Basics like name, email, and mobile number.
+2. Why We Need It: To match Students with tasks and process secure payments via Razorpay.
+3. Who Sees It: Your data is never sold. Only matched parties (Admin, Client, Student) see minimal profile info.
 """;
 
 const String _termsContent = """
-Terms and Conditions
-Last updated: July 9, 2026
+Terms and Conditions for Skilern
+Last updated: July 15, 2026
 
-Welcome to Skilern! These are the ground rules for using our website (https://skilern.com/) and app. By using Skilern, you are agreeing to these terms.
-
-1. Who Does What?
-- Clients: You need something done. You post the task.
-- Students: You have the skills. You complete the tasks.
-- Admins (That’s us!): We work behind the scenes to match Clients with the perfect Student for the job and make sure everyone gets what they need safely.
-
-2. How Skilern Works
-Step 1: Clients post what they need (including "Emergency Work").
-Step 2: Admins review the task and assign it to a Student.
-Step 3: The Student does the work. Once finished, the Client gets to preview it.
-Step 4: If the Client likes the work, they approve it and make the payment to Skilern.
-Step 5: Deliverables are released for download.
-Step 6: Admins transfer payment to the Student.
-
-3. Playing by the Rules
-We want Skilern to be a great place for everyone. Be honest, be on time, and do your own work. Copying someone else’s work (plagiarism) is strictly forbidden.
+By using Skilern, you agree to:
+1. Roles: Clients post tasks, Students complete tasks, and Admins facilitate matching.
+2. The Cycle: Tasks follow a Preview -> Approval -> Payout cycle managed by Skilern.
+3. Conduct: Plagiarism and off-platform payments are strictly prohibited.
 """;
 
 const String _refundContent = """
-Refund Policy
-Last updated: July 9, 2026
+Refund & Cancellation Policy
+Last updated: July 15, 2026
 
-Nobody likes a messy refund process, so we built Skilern to avoid it entirely.
-
-1. The "See It First" Guarantee
-When you post a task on Skilern, it costs nothing. When the Student finishes the work, you get to preview it. If it’s not what you asked for, you can reject it or ask for changes—all without paying a single rupee.
-
-2. When We DO Give Refunds
-Technology isn't perfect. You are eligible for a refund if:
-- You were charged twice: If a computer glitch bills you two times for one project, we will refund the extra charge immediately.
-- The file is broken: If you pay and the file is completely corrupted, blank, or broken—and our team cannot get you a working copy within 48 hours—we will give you your money back.
-
-3. Finality
-Because you only pay after you have reviewed the work and explicitly said "Yes, I approve this," we do not offer standard refunds once a payment is made and the file is downloaded.
+1. Preview Policy: Clients preview work before paying. You pay only when satisfied.
+2. Finality: Once a payment is confirmed and files are released, refunds are not issued.
+3. Glitches: Double-charges or technical failures will be refunded to the source account within 5-7 working days.
 """;
 
 const String _deliveryContent = """
-Shipping & Delivery Policy
+Digital Delivery Policy
 
-1. Digital Delivery
-All deliverables on Skilern are digital services. No physical shipping is required.
-
-2. Accessing Files
-Once the Client approves the deliverables and completes the payment, unwatermarked files will be available for instant download directly in the user dashboard.
-
-3. Delivery Timeline
-Timelines for project completion are agreed upon during the assignment phase between the Admin and the matched Student.
-""";  
+1. All deliverables on Skilern are digital. 
+2. Access: Unwatermarked files are available for download instantly after Admin verifies payment.
+3. Support: If a file is corrupted, contact support for a replacement within 48 hours.
+""";
