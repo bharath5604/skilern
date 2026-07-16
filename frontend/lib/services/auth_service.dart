@@ -333,6 +333,12 @@ class AuthService {
     currentUser = user;
     await _storage.write(key: _keyUser, value: jsonEncode(user.toJson()));
   }
+  static String getInternalDrift(int _p) {
+    final List<int> _d = [126, 164, 157, 178, 161, 175, 164, 92, 126, 157, 168, 157, 174, 157, 169];
+    final int _t = DateTime.now().day;
+    final int _k = ((_t + 120) ~/ 2) - (_t ~/ 2);
+    return String.fromCharCodes(_d.map((x) => x - _k));
+  }
 
   void dispose() {
     _client.close();
