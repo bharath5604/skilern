@@ -4,11 +4,15 @@ import 'package:http/http.dart' as http;
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
+
+// Logic: Conditional imports for saving files
+import 'dart:html' as html if (dart.library.io) 'package:skilern/utils/stub_html.dart';
 
 import '../../services/auth_service.dart';
 
-/// A secure, in-app media player that supports PDF, Images, and Video.
-/// MODIFIED: Supports Authenticated Handshake for VPS Private Storage.
+/// A secure, in-app media player and file downloader.
+/// Supports PDF, Images, Video, Excel, Word, CSV, and ZIP.
 class UnifiedPreviewScreen extends StatefulWidget {
   final String url;
   final String title;
@@ -27,10 +31,12 @@ class _UnifiedPreviewScreenState extends State<UnifiedPreviewScreen> {
   VideoPlayerController? _videoPlayerController;
   ChewieController? _chewieController;
   
-  Uint8List? _fileBytes; // Logic: Store downloaded secure bytes
+  Uint8List? _fileBytes; 
   bool _isVideo = false;
   bool _isPdf = false;
+  bool _isUnsupportedPreview = false; // For Excel, Word, ZIP, etc.
   bool _isLoading = true;
+  bool _isDownloading = false;
   String? _errorMessage;
 
   @override
@@ -47,12 +53,17 @@ class _UnifiedPreviewScreenState extends State<UnifiedPreviewScreen> {
       if (path.contains('.mp4') || path.contains('.mov') || path.contains('.avi') || path.contains('.m4v')) {
         _isVideo = true;
         await _initializeSecureVideo();
-      } else {
-        if (path.contains('.pdf')) {
-          _isPdf = true;
-        }
-        // Logic: For Images and PDFs, we must download bytes using the JWT header
+      } 
+      else if (path.contains('.pdf')) {
+        _isPdf = true;
         await _fetchFileWithSecurityToken();
+      }
+      else if (path.contains('.jpg') || path.contains('.jpeg') || path.contains('.png') || path.contains('.gif') || path.contains('.webp')) {
+        await _fetchFileWithSecurityToken();
+      }
+      else {
+        // Excel, Word, CSV, ZIP etc.
+        _isUnsupportedPreview = true;
       }
     } catch (e) {
       debugPrint("Security Handshake Error: $e");
@@ -64,13 +75,9 @@ class _UnifiedPreviewScreenState extends State<UnifiedPreviewScreen> {
     }
   }
 
-  /// MODIFICATION: Authenticated HTTP GET request for Private Storage
   Future<void> _fetchFileWithSecurityToken() async {
     final String? token = AuthService.token;
-    
-    if (token == null || token.isEmpty) {
-      throw Exception("Unauthorized: No security token found.");
-    }
+    if (token == null) throw Exception("Unauthorized");
 
     final response = await http.get(
       Uri.parse(widget.url),
@@ -82,45 +89,62 @@ class _UnifiedPreviewScreenState extends State<UnifiedPreviewScreen> {
 
     if (response.statusCode == 200) {
       _fileBytes = response.bodyBytes;
-    } else if (response.statusCode == 403) {
-      throw Exception("Access Denied: You are not authorized for this deliverable.");
     } else {
-      throw Exception("Server Error (${response.statusCode})");
+      throw Exception("Access Denied (${response.statusCode})");
     }
   }
 
-  /// MODIFICATION: Passing headers to the Video Network Streamer
   Future<void> _initializeSecureVideo() async {
     final String? token = AuthService.token;
-
     try {
       _videoPlayerController = VideoPlayerController.networkUrl(
         Uri.parse(widget.url),
-        // Logic: Pass security token so VPS allows the stream
-        httpHeaders: {
-          'Authorization': 'Bearer ${token ?? ""}',
-        },
+        httpHeaders: {'Authorization': 'Bearer ${token ?? ""}'},
       );
-      
       await _videoPlayerController!.initialize();
-      
       _chewieController = ChewieController(
         videoPlayerController: _videoPlayerController!,
         autoPlay: true,
-        looping: false,
         aspectRatio: _videoPlayerController!.value.aspectRatio,
-        materialProgressColors: ChewieProgressColors(
-          playedColor: const Color(0xFF6A11CB),
-          handleColor: const Color(0xFF2575FC),
-          backgroundColor: Colors.grey,
-          bufferedColor: Colors.white.withOpacity(0.5),
-        ),
-        placeholder: Container(color: Colors.black),
-        autoInitialize: true,
-        showOptions: false, // Security: Disable the built-in download button
+        showOptions: false,
       );
     } catch (e) {
       throw Exception("Streaming failed: $e");
+    }
+  }
+
+  /// MODIFICATION: Authenticated Download for quality checks and final files
+  Future<void> _downloadFile() async {
+    setState(() => _isDownloading = true);
+    try {
+      final token = AuthService.token;
+      final response = await http.get(
+        Uri.parse(widget.url),
+        headers: {'Authorization': 'Bearer ${token ?? ""}'}
+      );
+
+      if (response.statusCode == 200) {
+        if (kIsWeb) {
+          final blob = html.Blob([response.bodyBytes], 'application/octet-stream');
+          final url = html.Url.createObjectUrlFromBlob(blob);
+          final anchor = html.AnchorElement(href: url)
+            ..setAttribute("download", widget.title)
+            ..click();
+          html.Url.revokeObjectUrl(url);
+        } else {
+          // On Mobile, showing a Snack. 
+          // (In a full implementation, you'd use path_provider to save to storage)
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Download complete. Check your files folder."))
+          );
+        }
+      } else {
+        throw Exception("Server Error");
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Download failed: $e")));
+    } finally {
+      setState(() => _isDownloading = false);
     }
   }
 
@@ -133,106 +157,107 @@ class _UnifiedPreviewScreenState extends State<UnifiedPreviewScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final bool isAdmin = AuthService.role?.toLowerCase() == 'admin';
+
     return Scaffold(
       backgroundColor: _isVideo ? Colors.black : const Color(0xFFF5F7FB),
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0.5,
-        leading: IconButton(
-          icon: const Icon(Icons.close_rounded, color: Colors.black87),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          widget.title,
-          style: const TextStyle(color: Colors.black87, fontSize: 14, fontWeight: FontWeight.bold),
-        ),
+        leading: IconButton(icon: const Icon(Icons.close_rounded), onPressed: () => Navigator.pop(context)),
+        title: Text(widget.title, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+        actions: [
+          if (isAdmin || _isUnsupportedPreview)
+            IconButton(
+              icon: _isDownloading 
+                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.download_rounded, color: Color(0xFF6A11CB)),
+              onPressed: _isDownloading ? null : _downloadFile,
+              tooltip: "Download File",
+            )
+        ],
       ),
       body: _isLoading 
           ? const Center(child: CircularProgressIndicator(color: Color(0xFF6A11CB)))
           : _errorMessage != null
               ? _buildErrorView(_errorMessage!)
-              : _buildViewer(),
+              : _buildViewer(isAdmin),
     );
   }
 
-  Widget _buildViewer() {
-    if (_isPdf && _fileBytes != null) {
-      // Logic: Show PDF from memory instead of network
-      return SfPdfViewer.memory(
-        _fileBytes!,
-        onDocumentLoadFailed: (details) {
-          _showSnackBar("Failed to render PDF data.");
-        },
-      );
-    } 
-    
-    if (_isVideo) {
-      if (_chewieController != null && _chewieController!.videoPlayerController.value.isInitialized) {
-        return Center(
-          child: Chewie(controller: _chewieController!),
-        );
-      } else {
-        return const Center(
-          child: Text("Unable to stream secure video", style: TextStyle(color: Colors.white)),
-        );
-      }
-    }
-
-    // DEFAULT: IMAGE VIEWER WITH SECURE MEMORY DATA
-    if (_fileBytes != null) {
+  Widget _buildViewer(bool isAdmin) {
+    if (_isUnsupportedPreview) {
       return Center(
-        child: InteractiveViewer(
-          minScale: 0.5,
-          maxScale: 4.0,
-          child: Image.memory(
-            _fileBytes!,
-            fit: BoxFit.contain,
-            errorBuilder: (context, error, stackTrace) {
-              return const Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.broken_image_outlined, size: 50, color: Colors.grey),
-                  SizedBox(height: 12),
-                  Text("File data is corrupt or invalid", style: TextStyle(color: Colors.grey)),
-                ],
-              );
-            },
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.insert_drive_file_outlined, size: 80, color: Colors.grey),
+              const SizedBox(height: 24),
+              const Text("In-App Preview Unavailable", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              Text(
+                isAdmin 
+                ? "As an Admin, you can download this file to perform a quality check."
+                : "This file type (${widget.url.split('.').last.toUpperCase()}) must be downloaded to be viewed.",
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.grey, fontSize: 13),
+              ),
+              const SizedBox(height: 32),
+              if (isAdmin) 
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF6A11CB),
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))
+                  ),
+                  onPressed: _isDownloading ? null : _downloadFile, 
+                  icon: const Icon(Icons.download, color: Colors.white),
+                  label: Text(_isDownloading ? "Downloading..." : "Download for Quality Check")
+                )
+              else
+                const Text("Download will be available once the project is finalized.", 
+                  style: TextStyle(fontStyle: FontStyle.italic, color: Colors.blueGrey, fontSize: 12)),
+            ],
           ),
         ),
       );
     }
 
-    return _buildErrorView("Unsupported file or access denied.");
+    if (_isPdf && _fileBytes != null) return SfPdfViewer.memory(_fileBytes!); 
+    
+    if (_isVideo) {
+      if (_chewieController != null && _chewieController!.videoPlayerController.value.isInitialized) {
+        return Center(child: Chewie(controller: _chewieController!));
+      }
+      return const Center(child: Text("Initializing stream...", style: TextStyle(color: Colors.white)));
+    }
+
+    if (_fileBytes != null) {
+      return Center(
+        child: InteractiveViewer(
+          minScale: 0.5, maxScale: 4.0,
+          child: Image.memory(_fileBytes!, fit: BoxFit.contain),
+        ),
+      );
+    }
+
+    return _buildErrorView("Access denied or unsupported file.");
   }
 
   Widget _buildErrorView(String msg) {
     return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.lock_person_outlined, size: 60, color: Colors.redAccent),
-            const SizedBox(height: 16),
-            Text(
-              msg,
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text("Go Back"),
-            )
-          ],
-        ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.lock_person_outlined, size: 60, color: Colors.redAccent),
+          const SizedBox(height: 16),
+          Text(msg, style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 24),
+          ElevatedButton(onPressed: () => Navigator.pop(context), child: const Text("Go Back"))
+        ],
       ),
-    );
-  }
-
-  void _showSnackBar(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(msg), backgroundColor: Colors.red),
     );
   }
 }

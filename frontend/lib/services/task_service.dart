@@ -110,7 +110,6 @@ class TaskService {
     final body = <String, dynamic>{
       'title': title.trim(),
       'description': description.trim(),
-      // 'budget' removed from payload
       'deadline': deadline,
       'clientAgreedToTerms': acceptedTerms,
       if (location != null) 'location': location.trim(),
@@ -147,7 +146,6 @@ class TaskService {
       'guestName': guestName.trim(),
       'guestMobile': guestMobile.trim(),
       if (guestEmail != null) 'guestEmail': guestEmail.trim(),
-      // 'budget' removed from payload
       'deadline': deadline,
       'domain': domain ?? 'General',
       if (requiredSkills != null) 'requiredSkills': requiredSkills,
@@ -182,7 +180,6 @@ class TaskService {
     final body = <String, dynamic>{
       'title': title.trim(),
       'description': description.trim(),
-      // 'budget' removed from payload
       'deadline': deadline,
       if (location != null) 'location': location.trim(),
       if (domain != null) 'domain': domain.trim(),
@@ -268,12 +265,19 @@ class TaskService {
     return handleTaskListResponse(res);
   }
 
-  Future<Map<String, dynamic>> submitWork({required String taskId, required String fileUrl, String? notes}) async {
+  // ============================================================
+  // MODIFICATION: MULTI-FILE SUBMISSION
+  // ============================================================
+  Future<Map<String, dynamic>> submitWork({
+    required String taskId, 
+    required List<Map<String, String>> files, 
+    String? notes
+  }) async {
     final res = await client.post(
       Uri.parse('$baseUrl/$taskId/submit'), 
       headers: headers, 
       body: jsonEncode({
-        'fileUrl': fileUrl, 
+        'files': files, // Sending the full list of deliverables
         if (notes != null) 'notes': notes
       }),
     ).timeout(timeout);

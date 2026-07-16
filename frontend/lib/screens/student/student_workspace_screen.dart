@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:io' show File;
 import 'package:file_picker/file_picker.dart';
-// REMOVED: import 'package:firebase_storage/firebase_storage.dart' as fstorage; 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -9,7 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../services/task_service.dart';
 import '../../services/auth_service.dart'; 
 import '../../services/socketservice.dart'; 
-import '../../services/file_service.dart'; // MODIFICATION: IMPORT VPS FILE SERVICE
+import '../../services/file_service.dart'; 
 import '../../models/task.dart';
 import 'student_main_shell.dart';
 
@@ -46,17 +45,14 @@ class _StudentWorkspaceScreenState extends State<StudentWorkspaceScreen>
     _initializeRealTimeAndData();
   }
 
-  /// Sets up sockets and initial data load
   Future<void> _initializeRealTimeAndData() async {
     await _loadAllData();
-
     SocketService.connect();
     
     if (AuthService.userId != null) {
       SocketService.joinUserRoom(AuthService.userId!);
     }
 
-    // Refresh everything when signals are received from backend
     SocketService.on('task_request', (_) => _loadAllData(isSilent: true));
     SocketService.on('task_update', (_) => _loadAllData(isSilent: true));
     SocketService.on('task_assigned', (_) => _loadAllData(isSilent: true));
@@ -73,7 +69,6 @@ class _StudentWorkspaceScreenState extends State<StudentWorkspaceScreen>
     super.dispose();
   }
 
-  /// Fetches invitations and current assignments.
   Future<void> _loadAllData({bool isSilent = false}) async {
     if (!mounted) return;
     if (!isSilent) setState(() => _loading = true);
@@ -90,7 +85,6 @@ class _StudentWorkspaceScreenState extends State<StudentWorkspaceScreen>
         _invitations = results[1];
       });
 
-      // Join individual rooms for project-specific signals
       for (var t in _tasks) {
         if (t.id.isNotEmpty) SocketService.joinTaskRoom(t.id);
       }
@@ -321,70 +315,126 @@ class _WorkspaceTaskCard extends StatefulWidget {
 }
 
 class _WorkspaceTaskCardState extends State<_WorkspaceTaskCard> {
-  bool _uploading = false;
+  bool _busy = false;
 
   String _formatCurrency(double? val) => val == null ? 'TBD' : '₹${val.toStringAsFixed(0)}';
 
   // ============================================================
-  // MODIFICATION: SECURE VPS DELIVERABLE UPLOAD
+  // MODIFICATION: MULTI-FILE SECURE VPS SUBMISSION
   // ============================================================
   Future<void> _submitWork() async {
     final noteCtrl = TextEditingController();
-    String? fileUrl;
-    String? fileName;
+    List<Map<String, String>> stagedFiles = [];
+    bool isProcessing = false;
 
     await showDialog(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: const Text("Upload Deliverables"),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (_uploading) const Padding(
-                padding: EdgeInsets.symmetric(vertical: 24),
-                child: Column(
-                  children: [
-                    CircularProgressIndicator(color: Color(0xFF6A11CB)),
-                    SizedBox(height: 12),
-                    Text("Storing securely on VPS...", style: TextStyle(fontSize: 12, color: Colors.grey)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          title: const Text("Upload Deliverables", style: TextStyle(fontWeight: FontWeight.bold)),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (isProcessing) const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 30),
+                  child: Column(
+                    children: [
+                      CircularProgressIndicator(color: Color(0xFF6A11CB)),
+                      SizedBox(height: 16),
+                      Text("Uploading to Secure VPS Vault...", style: TextStyle(fontSize: 12, color: Colors.grey)),
+                    ],
+                  ),
+                )
+                else ...[
+                  const Text("Select all required project files (PDF, ZIP, Excel, Video, etc.)", 
+                    style: TextStyle(fontSize: 12, color: Colors.grey)),
+                  const SizedBox(height: 16),
+                  
+                  // staged file list
+                  if (stagedFiles.isNotEmpty) ...[
+                    ...stagedFiles.asMap().entries.map((entry) {
+                      int idx = entry.key;
+                      var f = entry.value;
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        decoration: BoxDecoration(color: Colors.blue.withOpacity(0.05), borderRadius: BorderRadius.circular(12)),
+                        child: ListTile(
+                          dense: true,
+                          leading: const Icon(Icons.insert_drive_file_outlined, color: Colors.blue, size: 20),
+                          title: Text(f['name']!, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis),
+                          trailing: IconButton(
+                            icon: const Icon(Icons.remove_circle_outline, color: Colors.red, size: 18),
+                            onPressed: () => setDialogState(() => stagedFiles.removeAt(idx)),
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                    const Divider(height: 24),
                   ],
-                ),
-              )
-              else ListTile(
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: Colors.grey.shade200)),
-                leading: const Icon(Icons.cloud_upload_outlined, color: Color(0xFF6A11CB)),
-                title: Text(fileName ?? "Select Work File", style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
-                subtitle: const Text("PDF, ZIP or Images (Max 15MB)", style: TextStyle(fontSize: 11)),
-                onTap: () async {
-                  final res = await FilePicker.platform.pickFiles(withData: true);
-                  if (res != null) {
-                    setDialogState(() => _uploading = true);
-                    try {
-                      // MODIFICATION: Secure VPS Upload
-                      fileUrl = await FileService.uploadToVault(res.files.first, res.files.first.name);
-                      fileName = res.files.first.name;
-                    } catch (e) {
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Upload Error: $e")));
-                    } finally {
-                      setDialogState(() => _uploading = false);
-                    }
-                  }
-                },
-              ),
-              const SizedBox(height: 16),
-              TextField(controller: noteCtrl, maxLines: 2, decoration: const InputDecoration(hintText: "Add a note for the Client...")),
-            ],
+
+                  ElevatedButton.icon(
+                    onPressed: () async {
+                      final res = await FilePicker.platform.pickFiles(
+                        allowMultiple: true, 
+                        type: FileType.any,
+                        withData: true
+                      );
+                      if (res != null) {
+                        setDialogState(() => isProcessing = true);
+                        try {
+                          for (var file in res.files) {
+                            // Hit VPS Vault directly
+                            final url = await FileService.uploadToVault(file, file.name);
+                            stagedFiles.add({'url': url, 'name': file.name});
+                          }
+                        } catch (e) {
+                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Upload Error: $e")));
+                        } finally {
+                          setDialogState(() => isProcessing = false);
+                        }
+                      }
+                    },
+                    icon: const Icon(Icons.add_to_photos_outlined, size: 18),
+                    label: const Text("Select Files"),
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.blue.withOpacity(0.1), foregroundColor: Colors.blue, elevation: 0),
+                  ),
+                  
+                  const SizedBox(height: 20),
+                  TextField(
+                    controller: noteCtrl, 
+                    maxLines: 2, 
+                    style: const TextStyle(fontSize: 13),
+                    decoration: const InputDecoration(
+                      hintText: "Add a note for the Client...",
+                      border: OutlineInputBorder(),
+                      isDense: true
+                    )
+                  ),
+                ],
+              ],
+            ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Cancel")),
+            TextButton(onPressed: isProcessing ? null : () => Navigator.pop(ctx), child: const Text("Cancel")),
             ElevatedButton(
-              onPressed: (fileUrl == null || _uploading) ? null : () async {
-                await TaskService().submitWork(taskId: widget.task.id, fileUrl: fileUrl!, notes: noteCtrl.text);
-                Navigator.pop(ctx);
-                widget.onSubmitted(isSilent: true);
+              onPressed: (stagedFiles.isEmpty || isProcessing) ? null : () async {
+                setDialogState(() => isProcessing = true);
+                try {
+                  await TaskService().submitWork(
+                    taskId: widget.task.id, 
+                    files: stagedFiles, 
+                    notes: noteCtrl.text
+                  );
+                  Navigator.pop(ctx);
+                  widget.onSubmitted(isSilent: true);
+                } catch (e) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+                } finally {
+                  setDialogState(() => isProcessing = false);
+                }
               },
               child: const Text("Submit Work"),
             )
@@ -455,7 +505,7 @@ class _WorkspaceTaskCardState extends State<_WorkspaceTaskCard> {
               if (canSubmit) 
                 ElevatedButton(
                   onPressed: _submitWork, 
-                  child: Text(status == 'assigned' && widget.task.modificationNotes!.isNotEmpty ? "Resubmit" : "Submit Work")
+                  child: Text(status == 'assigned' && (widget.task.modificationNotes?.isNotEmpty ?? false) ? "Resubmit" : "Submit Work")
                 )
               else if (isCompleted)
                 const Row(children: [Icon(Icons.verified, color: Colors.green, size: 16), SizedBox(width: 4), Text("Finalized", style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 12))])

@@ -14,7 +14,8 @@ function normalizeStringArray(value) {
 
 /**
  * Submission Sub Schema
- * Tracks the work uploaded by the student.
+ * Tracks multiple pieces of work uploaded by the student.
+ * MODIFIED: Supports multiple files and different file types.
  */
 const submissionSchema = new Schema(
   {
@@ -23,18 +24,33 @@ const submissionSchema = new Schema(
       ref: 'User',
       required: [true, 'Submission student is required'],
     },
-    fileUrl: {
-      type: String,
-      required: [true, 'Submission file URL is required'],
-      trim: true,
-      maxlength: [2000, 'Submission file URL cannot exceed 2000 characters'],
-    },
+    
+    // ============================================================
+    // MODIFICATION: MULTI-FILE SUPPORT
+    // Replaced single fileUrl with an array of objects
+    // ============================================================
+    files: [
+      {
+        url: { 
+          type: String, 
+          required: [true, 'File URL is required'],
+          trim: true 
+        },
+        name: { 
+          type: String, 
+          required: [true, 'File name is required'],
+          trim: true 
+        }
+      }
+    ],
+
     notes: {
       type: String,
       default: '',
       trim: true,
       maxlength: [2000, 'Submission notes cannot exceed 2000 characters'],
     },
+    
     // Approved by Client (This triggers the final status)
     approved: {
       type: Boolean,
@@ -229,10 +245,7 @@ const taskSchema = new Schema(
       default: null,
     },
 
-    // ============================================================
-    // MODIFICATION: PERSISTENT INSTRUCTIONS FOR STUDENT
     // Stores the reason/notes provided when a client requests modification.
-    // ============================================================
     modificationNotes: {
       type: String,
       default: '',
@@ -240,7 +253,6 @@ const taskSchema = new Schema(
     },
 
     attemptCount: { type: Number, default: 0 },
-
 
     rating: { type: Number, default: 0 },
     feedback: { type: String, default: '', trim: true },

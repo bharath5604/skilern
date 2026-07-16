@@ -2,13 +2,7 @@
 const Task = require('../models/Task');
 const User = require('../models/User');
 const Message = require('../models/Message'); 
-const { sendNotification } = require('../utils/fcm'); // Now includes Socket + DB logic
-
-// Helper for numeric parsing
-const asNumber = (val) => {
-  const n = Number(val);
-  return Number.isFinite(n) ? n : null;
-};
+const { sendNotification } = require('../utils/fcm'); 
 
 /**
  * Global Normalization Helper
@@ -61,7 +55,7 @@ exports.createTask = async (req, res) => {
     const task = await Task.create({
       title: title.trim(),
       description: description.trim(),
-      budget: null, // Admin finalizes this during negotiation
+      budget: null, 
       deadline: new Date(deadline),
       location: String(location || '').trim(),
       domain: cleanDomain,
@@ -76,7 +70,6 @@ exports.createTask = async (req, res) => {
 
     emitUpdate(req, 'admin_room', 'task_created', { taskId: task._id });
 
-    // Notify Admin via the new MongoDB + Socket channel
     const admin = await User.findOne({ role: 'admin' });
     if (admin) {
         await sendNotification(admin._id.toString(), {
@@ -166,10 +159,8 @@ exports.rateStudent = async (req, res) => {
       });
       await student.save();
       
-      // Update local wallet and feedback stats in real-time
       emitUpdate(req, student._id.toString(), 'feedback_update', { score: scoreValue });
 
-      // Notify Student via DB + Sockets + FCM
       await sendNotification(student._id.toString(), {
           title: "New Project Review",
           body: `You received a ${scoreValue}-star rating for ${task.title}.`,
@@ -182,19 +173,29 @@ exports.rateStudent = async (req, res) => {
 
 /**
  * STUDENT SUBMIT WORK
+ * MODIFIED: Supports multiple files and varied types.
  */
 exports.submitWork = async (req, res) => {
   try {
-    const { fileUrl, notes } = req.body;
+    // UPDATED: Destructure 'files' array instead of 'fileUrl'
+    const { files, notes } = req.body;
     const task = await Task.findById(req.params.taskId || req.params.id);
 
     if (!task || task.student?.toString() !== req.user.id) {
       return res.status(403).json({ message: 'Unauthorized' });
     }
 
+    if (!files || !Array.isArray(files) || files.length === 0) {
+      return res.status(400).json({ message: 'At least one deliverable file is required' });
+    }
+
+    // Logic: Structure the submission with the new array
     task.submission = {
       student: req.user.id,
-      fileUrl: String(fileUrl || '').trim(),
+      files: files.map(f => ({
+        url: String(f.url || '').trim(),
+        name: String(f.name || 'Untitled File').trim()
+      })),
       notes: String(notes || '').trim(),
       approved: false,
       submittedAt: new Date(),
@@ -203,15 +204,13 @@ exports.submitWork = async (req, res) => {
     task.status = 'under_review';
     task.clientCanViewSubmission = true; 
     task.clientCanDownload = false; 
-    task.modificationNotes = ''; // Clear notes as they've been addressed
+    task.modificationNotes = ''; // Clear revision instructions
 
     await task.save();
 
-    // Signal thread sub-rooms
     emitUpdate(req, `${task._id}_client`, 'task_update', { taskId: task._id });
     emitUpdate(req, 'admin_room', 'task_update', { taskId: task._id });
 
-    // Notify Admin via DB + Sockets
     const admin = await User.findOne({ role: 'admin' });
     if (admin) {
         await sendNotification(admin._id.toString(), {
@@ -222,7 +221,10 @@ exports.submitWork = async (req, res) => {
     }
 
     return res.json({ message: 'Work submitted for review', task });
-  } catch (err) { return res.status(500).json({ message: 'Submission failed' }); }
+  } catch (err) { 
+    console.error("SubmitWork Error:", err);
+    return res.status(500).json({ message: 'Submission failed' }); 
+  }
 };
 
 /**
@@ -245,7 +247,6 @@ exports.approveWork = async (req, res) => {
       student.tasksCompleted = (student.tasksCompleted || 0) + 1;
       await student.save();
       
-      // Notify Student via DB + Sockets
       await sendNotification(student._id.toString(), {
           title: "Deliverables Approved!",
           body: `Client finalized your project: ${task.title}.`,
@@ -253,7 +254,6 @@ exports.approveWork = async (req, res) => {
       }, req);
     }
 
-    // Refresh UI for all relevant isolated threads
     emitUpdate(req, `${task._id}_client`, 'task_update', { taskId: task._id });
     emitUpdate(req, 'admin_room', 'task_update', { taskId: task._id });
 
@@ -263,7 +263,7 @@ exports.approveWork = async (req, res) => {
 
 /**
  * CLIENT DECLINE / MODIFY (REVISION - NO LIMIT)
- * Logic: Saves modificationNotes to DB and notifies the student thread.
+ * MODIFIED: Clears submission files so student can resubmit correctly.
  */
 exports.declineWork = async (req, res) => {
   try {
@@ -275,15 +275,16 @@ exports.declineWork = async (req, res) => {
     }
 
     task.attemptCount = (task.attemptCount || 0) + 1;
+    
+    // Logic: Clear current submission to force a fresh upload
     task.submission = null; 
-    task.status = 'assigned'; // Loop back to active work
+    task.status = 'assigned'; 
     task.modificationNotes = String(reason || '').trim();
 
     await task.save();
 
     const admin = await User.findOne({ role: 'admin' });
     if (admin) {
-        // Log modification context into both isolated threads automatically
         await Message.create({
             task: task._id, sender: admin._id, receiver: task.student, 
             student: task.student, 
@@ -297,10 +298,8 @@ exports.declineWork = async (req, res) => {
     }
 
     if (task.student) {
-      // Refresh the specific student thread (shows orange instruction box)
       emitUpdate(req, `${task._id}_student_${task.student}`, 'task_update', { taskId: task._id });
       
-      // Notify Student via DB + Sockets
       await sendNotification(task.student.toString(), {
           title: "Revision Required",
           body: `Client requested changes for: ${task.title}.`,

@@ -1,3 +1,5 @@
+// lib/models/task.dart
+
 class Task {
   final String id;
   final String title;
@@ -27,7 +29,12 @@ class Task {
   final bool clientTermsAccepted;
   final bool studentTermsAccepted;
 
-  final String? submissionFile;
+  // ============================================================
+  // MODIFICATION: MULTI-FILE SUBMISSION SUPPORT
+  // Replaced single submissionFile string with a list of file objects
+  // Each map contains {'url': '...', 'name': '...'}
+  // ============================================================
+  final List<Map<String, String>> submissionFiles; 
   final String? submissionNotes;
   final String? submittedAt;
 
@@ -54,9 +61,7 @@ class Task {
   // --- HYBRID PAYMENT SWITCH ---
   final bool budgetFinalized;
 
-  // ============================================================
-  // MODIFICATION: PERSISTENT REVISION INSTRUCTIONS
-  // ============================================================
+  // Stores the reason/notes provided when a client requests modification.
   final String? modificationNotes;
 
   const Task({
@@ -80,7 +85,7 @@ class Task {
     this.assignedStudentName,
     this.clientTermsAccepted = false,
     this.studentTermsAccepted = false,
-    this.submissionFile,
+    this.submissionFiles = const [], // Default to empty list
     this.submissionNotes,
     this.submittedAt,
     this.submissionApproved = false,
@@ -97,7 +102,7 @@ class Task {
     this.adminReceivedPayment = false,
     this.adminPaidStudent = false,
     this.budgetFinalized = false,
-    this.modificationNotes = '', // Default to empty string
+    this.modificationNotes = '', 
   });
 
   static double? _toDoubleOrNull(dynamic value) {
@@ -123,6 +128,22 @@ class Task {
           .map((e) => e?.toString() ?? '')
           .where((e) => e.trim().isNotEmpty)
           .toList();
+    }
+    return const [];
+  }
+
+  // Helper to parse the new files array in submission
+  static List<Map<String, String>> _toFileMapList(dynamic value) {
+    if (value is List) {
+      return value.map((item) {
+        if (item is Map) {
+          return {
+            'url': item['url']?.toString() ?? '',
+            'name': item['name']?.toString() ?? 'Untitled File',
+          };
+        }
+        return <String, String>{};
+      }).where((element) => element.isNotEmpty).toList();
     }
     return const [];
   }
@@ -158,7 +179,10 @@ class Task {
       assignedStudentName: student?['name']?.toString(),
       clientTermsAccepted: _toBool(json['clientAgreedToTerms']),
       studentTermsAccepted: _toBool(json['studentAgreedToTerms']),
-      submissionFile: submission?['fileUrl']?.toString(),
+      
+      // UPDATED MAPPING: Handle multiple files
+      submissionFiles: _toFileMapList(submission?['files']),
+      
       submissionNotes: submission?['notes']?.toString(),
       submittedAt: submission?['submittedAt']?.toString(),
       submissionApproved: _toBool(submission?['approved']),
@@ -176,7 +200,6 @@ class Task {
       adminReceivedPayment: _toBool(json['adminReceivedPayment']),
       adminPaidStudent: _toBool(json['adminPaidStudent']),
       budgetFinalized: _toBool(json['budgetFinalized']),
-      // Mapping new field
       modificationNotes: json['modificationNotes']?.toString() ?? '',
     );
   }
@@ -195,6 +218,8 @@ class Task {
       'budgetFinalized': budgetFinalized,
       'budget': budget,
       'modificationNotes': modificationNotes,
+      // Note: We don't usually send full submission objects back in toJson for task updates,
+      // but if needed, you would export submissionFiles here.
     };
   }
 
@@ -210,6 +235,7 @@ class Task {
     bool? budgetFinalized,
     double? budget,
     String? modificationNotes,
+    List<Map<String, String>>? submissionFiles,
   }) {
     return Task(
       id: id ?? this.id,
@@ -232,7 +258,7 @@ class Task {
       assignedStudentName: assignedStudentName,
       clientTermsAccepted: clientTermsAccepted,
       studentTermsAccepted: studentTermsAccepted,
-      submissionFile: submissionFile,
+      submissionFiles: submissionFiles ?? this.submissionFiles,
       submissionNotes: submissionNotes,
       submittedAt: submittedAt,
       submissionApproved: submissionApproved,
@@ -258,5 +284,7 @@ class Task {
   bool get isAssigned => status == 'assigned';
   bool get isUnderReview => status == 'under_review';
   bool get isCompleted => status == 'completed';
-  bool get hasSubmission => submissionFile != null && submissionFile!.isNotEmpty;
+  
+  // UPDATED: Now checks if the list contains files
+  bool get hasSubmission => submissionFiles.isNotEmpty;
 }

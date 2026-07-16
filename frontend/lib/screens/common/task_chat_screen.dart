@@ -1,6 +1,5 @@
 import 'dart:io' show File;
 import 'package:file_picker/file_picker.dart';
-// REMOVED: import 'package:firebase_storage/firebase_storage.dart' as fstorage; 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; 
@@ -9,7 +8,8 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../services/auth_service.dart';
 import '../../services/message_service.dart';
 import '../../services/socketservice.dart';
-import '../../services/file_service.dart'; // MODIFICATION: IMPORT VPS FILE SERVICE
+import '../../services/file_service.dart'; 
+import '../common/unified_preview_screen.dart';
 
 /// Task-specific chat screen supporting dynamic real-time messaging
 /// across Admin, Client, and Student roles with strict thread isolation.
@@ -40,7 +40,6 @@ class _TaskChatScreenState extends State<TaskChatScreen> {
   bool _sending = false;
   bool _sendingFile = false;
 
-  // Modern Purple Palette
   static const Color primaryPurple = Color(0xFF6A11CB);
   static const Color secondaryPurple = Color(0xFF2575FC);
   static const Color bg = Color(0xFFF5F7FB);
@@ -69,6 +68,7 @@ class _TaskChatScreenState extends State<TaskChatScreen> {
       currentThreadStudentId = widget.peerStudentId;
     }
 
+    // Join specific isolated sub-room
     SocketService.joinTaskRoom(widget.taskId, studentId: currentThreadStudentId);
 
     SocketService.socket!.on('new_message', (data) {
@@ -77,6 +77,7 @@ class _TaskChatScreenState extends State<TaskChatScreen> {
         final newMessage = _safeMap(data);
 
         // --- THE LEAK PROTECTOR ---
+        // Logic: Verify this message actually belongs to the current thread context
         final String? msgStudentId = newMessage['student']?.toString();
         if (msgStudentId != currentThreadStudentId) {
           debugPrint("TaskChat: Blocked real-time message leak from another thread.");
@@ -185,9 +186,7 @@ class _TaskChatScreenState extends State<TaskChatScreen> {
     }
   }
 
-  // ============================================================
-  // MODIFICATION: VPS SECURE FILE UPLOAD (Fixes CORS Net::ERR_FAILED)
-  // ============================================================
+  /// MODIFICATION: VPS SECURE FILE UPLOAD
   Future<void> _pickAndSendFile() async {
     try {
       setState(() => _sendingFile = true);
@@ -205,15 +204,13 @@ class _TaskChatScreenState extends State<TaskChatScreen> {
         return;
       }
 
-      // Logic: Hit the VPS Secure Vault instead of Firebase
-      // This uses a standard HTTP Multipart request which bypasses CORS net errors.
+      // Hit VPS Vault directly to get secure URL
       final String secureVpsUrl = await FileService.uploadToVault(picked, picked.name);
 
-      // Construct and send the message with the VPS link
       await _send(fileUrl: secureVpsUrl, fileName: picked.name);
 
     } catch (e) {
-      if (mounted) _showSnackBar('VPS Upload failed: $e');
+      if (mounted) _showSnackBar('Upload failed');
     } finally {
       if (mounted) setState(() => _sendingFile = false);
     }
@@ -247,11 +244,19 @@ class _TaskChatScreenState extends State<TaskChatScreen> {
     return '$hour:$min $ampm';
   }
 
-  Future<void> _openAttachment(String u) async {
-    final Uri uri = Uri.parse(u);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    }
+  void _openAttachment(String url, String? fileName) {
+    if (url.isEmpty) return;
+
+    // MODIFICATION: Pass fileName for correct extension handling in Previewer
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => UnifiedPreviewScreen(
+          url: url,
+          title: fileName ?? "Attachment",
+        ),
+      ),
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -300,8 +305,8 @@ class _TaskChatScreenState extends State<TaskChatScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(displayTitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: textDark, fontSize: 16, fontWeight: FontWeight.w700)),
-                Text(_isAdminStudentThread ? 'Student thread' : (_isAdminClientThread ? 'Client thread' : 'Support chat'), style: const TextStyle(color: textMuted, fontSize: 10)),
+                Text(displayTitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: textDark, fontSize: 14, fontWeight: FontWeight.bold)),
+                Text(_isAdminStudentThread ? 'Student thread' : (_isAdminClientThread ? 'Client thread' : 'Support chat'), style: const TextStyle(color: textMuted, fontSize: 10, fontWeight: FontWeight.w500)),
               ],
             ),
           ),
@@ -332,7 +337,7 @@ class _TaskChatScreenState extends State<TaskChatScreen> {
           timestamp: _formatTimestamp(m['createdAt']),
           fileUrl: m['fileUrl']?.toString(),
           fileName: m['fileName']?.toString(),
-          onAttachmentTap: m['fileUrl'] != null ? () => _openAttachment(m['fileUrl']) : null,
+          onAttachmentTap: m['fileUrl'] != null ? () => _openAttachment(m['fileUrl']!, m['fileName']) : null,
         );
       },
     );
@@ -358,22 +363,14 @@ class _TaskChatScreenState extends State<TaskChatScreen> {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14),
                 decoration: BoxDecoration(color: const Color(0xFFF9FAFB), borderRadius: BorderRadius.circular(18), border: Border.all(color: border)),
-                child: KeyboardListener(
-                  focusNode: FocusNode(), 
-                  onKeyEvent: (event) {
-                    if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.enter && !HardwareKeyboard.instance.isShiftPressed) {
-                      _send();
-                    }
-                  },
-                  child: TextField(
-                    controller: _controller,
-                    focusNode: _inputFocusNode, 
-                    minLines: 1, 
-                    maxLines: 4, 
-                    textInputAction: TextInputAction.send, 
-                    decoration: const InputDecoration(hintText: 'Type a message...', border: InputBorder.none),
-                    onSubmitted: (_) => _send(),
-                  ),
+                child: TextField(
+                  controller: _controller,
+                  focusNode: _inputFocusNode, 
+                  minLines: 1, 
+                  maxLines: 4, 
+                  textInputAction: TextInputAction.send, 
+                  decoration: const InputDecoration(hintText: 'Type a message...', border: InputBorder.none, hintStyle: TextStyle(fontSize: 13)),
+                  onSubmitted: (_) => _send(),
                 ),
               ),
             ),
@@ -400,7 +397,7 @@ class _TaskChatScreenState extends State<TaskChatScreen> {
         children: [
           Icon(Icons.chat_bubble_outline_rounded, size: 60, color: Colors.grey[300]),
           const SizedBox(height: 16),
-          const Text('No messages yet', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: textMuted)),
+          const Text('No messages yet', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: textMuted)),
           const Text('Start the conversation!', style: TextStyle(fontSize: 12, color: Colors.grey)),
         ],
       ),
@@ -414,7 +411,7 @@ class _MessageBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bubbleColor = isMe ? _TaskChatScreenState.myBubble : _TaskChatScreenState.otherBubble;
+    final bubbleColor = isMe ? _TaskChatScreenState.primaryPurple : _TaskChatScreenState.otherBubble;
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Row(
@@ -434,13 +431,13 @@ class _MessageBubble extends StatelessWidget {
                   topLeft: const Radius.circular(18), topRight: const Radius.circular(18),
                   bottomLeft: Radius.circular(isMe ? 18 : 6), bottomRight: Radius.circular(isMe ? 6 : 18),
                 ),
-                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)],
+                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 4))],
               ),
               child: Column(
                 crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
                 children: [
                   Text(isMe ? 'You' : name, style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: isMe ? Colors.white70 : _TaskChatScreenState.primaryPurple)),
-                  if (text.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 4), child: Text(text, style: TextStyle(color: isMe ? Colors.white : _TaskChatScreenState.textDark, fontSize: 14))),
+                  if (text.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 4), child: Text(text, style: TextStyle(color: isMe ? Colors.white : _TaskChatScreenState.textDark, fontSize: 13.5))),
                   if (fileUrl != null) _AttachmentCard(isMe: isMe, fileName: fileName ?? 'File', onTap: onAttachmentTap ?? () {}),
                   const SizedBox(height: 4),
                   Text(timestamp, style: TextStyle(fontSize: 8, color: isMe ? Colors.white60 : _TaskChatScreenState.textMuted)),
@@ -464,14 +461,14 @@ class _AttachmentCard extends StatelessWidget {
       onTap: onTap,
       child: Container(
         margin: const EdgeInsets.only(top: 8),
-        padding: const EdgeInsets.all(8),
+        padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(color: isMe ? Colors.white12 : const Color(0xFFF3F4F6), borderRadius: BorderRadius.circular(12)),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.attach_file_rounded, size: 16, color: isMe ? Colors.white : _TaskChatScreenState.primaryPurple),
+            Icon(Icons.insert_drive_file_outlined, size: 16, color: isMe ? Colors.white : _TaskChatScreenState.primaryPurple),
             const SizedBox(width: 8),
-            Flexible(child: Text(fileName, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: isMe ? Colors.white : _TaskChatScreenState.textDark))),
+            Flexible(child: Text(fileName, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: isMe ? Colors.white : _TaskChatScreenState.textDark, fontWeight: FontWeight.bold))),
           ],
         ),
       ),

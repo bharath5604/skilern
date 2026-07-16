@@ -4,7 +4,7 @@ import '../../services/admin_service.dart';
 import '../../services/admin_payment_service.dart'; 
 import '../../services/socketservice.dart'; 
 import '../../services/auth_service.dart'; 
-import '../common/unified_preview_screen.dart'; // MODIFICATION: IMPORTED PREVIEWER
+import '../common/unified_preview_screen.dart';
 
 class AdminTaskDetailScreen extends StatefulWidget {
   final Map task;
@@ -46,9 +46,6 @@ class _AdminTaskDetailScreenState extends State<AdminTaskDetailScreen> {
     super.initState();
     _taskData = _safeMap(widget.task);
     
-    // ============================================================
-    // DYNAMIC REAL-TIME SYNC
-    // ============================================================
     SocketService.connect();
     SocketService.joinTaskRoom(_taskId()); 
     
@@ -404,9 +401,13 @@ class _AdminTaskDetailScreenState extends State<AdminTaskDetailScreen> {
     );
   }
 
+  // ============================================================
+  // MODIFICATION: MULTI-FILE QUALITY CHECK LIST
+  // ============================================================
   Widget _buildSubmissionSection() {
     final submission = _safeMap(_taskData['submission']);
-    if (submission.isEmpty) return const SizedBox.shrink();
+    final List files = submission['files'] as List? ?? [];
+    if (files.isEmpty) return const SizedBox.shrink();
 
     return Container(
       margin: const EdgeInsets.only(top: 16),
@@ -415,28 +416,42 @@ class _AdminTaskDetailScreenState extends State<AdminTaskDetailScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('STUDENT SUBMISSION', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: Colors.green)),
+          const Text('STUDENT SUBMISSION - QUALITY CHECK', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: Colors.green)),
           const SizedBox(height: 12),
           
-          // ============================================================
-          // MODIFICATION: USE INTERNAL PREVIEWER INSTEAD OF BROWSER
-          // ============================================================
-          ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.green, minimumSize: const Size(double.infinity, 45)), 
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => UnifiedPreviewScreen(
-                    url: submission['fileUrl'], 
-                    title: "Reviewing: ${_safeString(_taskData['title'])}"
-                  ),
-                ),
-              );
-            }, 
-            icon: const Icon(Icons.remove_red_eye_rounded), 
-            label: const Text("Admin Quality Check")
-          ),
+          ...files.map((file) {
+            final String fUrl = file['url']?.toString() ?? '';
+            final String fName = file['name']?.toString() ?? 'File';
+
+            return Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
+              child: ListTile(
+                dense: true,
+                leading: const Icon(Icons.description_outlined, color: Colors.green),
+                title: Text(fName, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                trailing: const Icon(Icons.chevron_right, size: 16),
+                onTap: () {
+                  // Opens internal previewer which handles authenticated downloads for quality check
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => UnifiedPreviewScreen(
+                        url: fUrl, 
+                        title: "Reviewing: $fName"
+                      ),
+                    ),
+                  );
+                },
+              ),
+            );
+          }).toList(),
+
+          if (submission['notes'] != null && submission['notes'].toString().isNotEmpty) ...[
+            const SizedBox(height: 10),
+            const Text("STUDENT NOTE:", style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: Colors.blueGrey)),
+            Text(submission['notes'], style: const TextStyle(fontSize: 12, color: Colors.black54, fontStyle: FontStyle.italic)),
+          ]
         ],
       ),
     );

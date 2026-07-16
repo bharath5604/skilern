@@ -74,10 +74,6 @@ class MyTasksScreenState extends State<MyTasksScreen> {
     super.dispose();
   }
 
-  // ---------------------------------------------------------------------------
-  // CORE ACTIONS
-  // ---------------------------------------------------------------------------
-
   Future<void> loadMyTasks({bool isSilent = false}) async {
     if (mounted && !isSilent) setState(() => loading = true);
     try {
@@ -238,10 +234,6 @@ class MyTasksScreenState extends State<MyTasksScreen> {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // UI BUILDERS
-  // ---------------------------------------------------------------------------
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -298,7 +290,7 @@ class MyTasksScreenState extends State<MyTasksScreen> {
               ],
             ),
             const SizedBox(height: 6),
-            Text("Budget: ${t.budget != null ? '₹${t.budget!.toStringAsFixed(0)}' : 'TBD'}", 
+            Text("Negotiated Budget: ${t.budget != null ? '₹${t.budget!.toStringAsFixed(0)}' : 'TBD'}", 
                 style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 13)),
             
             if (hasSubmitted) ...[
@@ -311,61 +303,61 @@ class MyTasksScreenState extends State<MyTasksScreen> {
                   border: Border.all(color: isDownloadUnlocked ? Colors.green : Colors.blue.withOpacity(0.3)),
                 ),
                 child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
                       children: [
                         Icon(isDownloadUnlocked ? Icons.verified_user : Icons.remove_red_eye_outlined, 
-                             color: isDownloadUnlocked ? Colors.green : Colors.blue, size: 20),
+                             color: isDownloadUnlocked ? Colors.green : Colors.blue, size: 18),
                         const SizedBox(width: 8),
-                        Text(isDownloadUnlocked ? "Full Files Available" : "Preview Stage (In-App Only)", 
-                             style: TextStyle(fontWeight: FontWeight.bold, color: isDownloadUnlocked ? Colors.green : Colors.blue, fontSize: 13)),
+                        Text(isDownloadUnlocked ? "Full Deliverables Released" : "Preview Stage (In-App Only)", 
+                             style: TextStyle(fontWeight: FontWeight.bold, color: isDownloadUnlocked ? Colors.green : Colors.blue, fontSize: 12)),
                       ],
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 14),
 
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton.icon(
-                        onPressed: t.submissionFile == null ? null : () {
-                          // Secure internal viewer passes JWT automatically
-                          Navigator.push(context, MaterialPageRoute(
-                            builder: (_) => UnifiedPreviewScreen(url: t.submissionFile!, title: t.title)
-                          ));
-                        },
-                        icon: const Icon(Icons.visibility),
-                        label: const Text("View Deliverables"),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.blue, side: const BorderSide(color: Colors.blue),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    // ============================================================
+                    // MODIFICATION: MULTI-FILE DELIVERABLES LIST
+                    // ============================================================
+                    ...t.submissionFiles.map((file) {
+                      final String url = file['url']!;
+                      final String name = file['name']!;
+                      
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.grey.shade100)),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.insert_drive_file_outlined, size: 16, color: Colors.blueGrey),
+                            const SizedBox(width: 10),
+                            Expanded(child: Text(name, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                            
+                            // Preview Button
+                            IconButton(
+                              icon: const Icon(Icons.visibility, size: 18, color: Colors.blue),
+                              onPressed: () => Navigator.push(context, MaterialPageRoute(
+                                builder: (_) => UnifiedPreviewScreen(url: url, title: name)
+                              )),
+                            ),
+
+                            // Secure Download Button (Respects gating)
+                            IconButton(
+                              icon: Icon(isDownloadUnlocked ? Icons.download : Icons.lock_outline, size: 18, color: isDownloadUnlocked ? primaryPurple : Colors.grey),
+                              onPressed: isDownloadUnlocked ? () => _launchSecureUrl(url, name) : null,
+                            ),
+                          ],
                         ),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        // MODIFICATION: Trigger internal secure download
-                        onPressed: (isDownloadUnlocked && t.submissionFile != null) 
-                            ? () => _launchSecureUrl(t.submissionFile!, "deliverable_${t.id}") 
-                            : null, 
-                        icon: Icon(isDownloadUnlocked ? Icons.download : Icons.lock_outline),
-                        label: const Text("Save to Device"),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: isDownloadUnlocked ? primaryPurple : Colors.grey[300],
-                          foregroundColor: Colors.white, elevation: 0,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        ),
-                      ),
-                    ),
+                      );
+                    }).toList(),
 
                     if (t.status != 'completed') ...[
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 12),
                       Row(
                         children: [
-                          Expanded(child: OutlinedButton(onPressed: () => _handleRequestModification(t), child: const Text("Modify", style: TextStyle(fontSize: 11)))),
+                          Expanded(child: OutlinedButton(onPressed: () => _handleRequestModification(t), child: const Text("Request Changes", style: TextStyle(fontSize: 10)))),
                           const SizedBox(width: 10),
-                          Expanded(child: ElevatedButton(onPressed: () => approveAndRate(t.id), child: const Text("Approve Work", style: TextStyle(fontSize: 11)))),
+                          Expanded(child: ElevatedButton(onPressed: () => approveAndRate(t.id), child: const Text("Approve & Pay", style: TextStyle(fontSize: 10)))),
                         ],
                       )
                     ]
@@ -387,11 +379,11 @@ class MyTasksScreenState extends State<MyTasksScreen> {
                 child: Column(
                   children: [
                     if (t.adminReceivedPayment) ...[
-                      const Icon(Icons.check_circle, color: Colors.green, size: 40),
+                      const Icon(Icons.check_circle, color: Colors.green, size: 36),
                       const SizedBox(height: 8),
-                      const Text("Fully Verified", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
+                      const Text("Payment Verified by Admin", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green, fontSize: 13)),
                     ] else if (t.budgetFinalized) ...[
-                      const Text("Budget Finalized", style: TextStyle(fontWeight: FontWeight.bold, color: primaryPurple)),
+                      const Text("Budget Finalized", style: TextStyle(fontWeight: FontWeight.bold, color: primaryPurple, fontSize: 13)),
                       const SizedBox(height: 12),
                       ElevatedButton.icon(
                         style: ElevatedButton.styleFrom(backgroundColor: Colors.green, minimumSize: const Size(double.infinity, 50)),
@@ -400,9 +392,9 @@ class MyTasksScreenState extends State<MyTasksScreen> {
                         label: Text("Pay ₹${(t.budget ?? 0).toStringAsFixed(0)} via Razorpay"),
                       ),
                     ] else ...[
-                      const Text("Finalize payment with Admin", style: TextStyle(fontWeight: FontWeight.bold)),
+                      const Text("Finalize payment with Admin", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                       const SizedBox(height: 12),
-                      const Text("Wait for Admin to verify your manual payment or wait for budget finalization.", 
+                      const Text("Wait for Admin to verify your manual payment or wait for budget finalization in chat.", 
                         textAlign: TextAlign.center, style: TextStyle(fontSize: 11, color: textMuted)),
                     ],
                   ],
@@ -435,38 +427,34 @@ class MyTasksScreenState extends State<MyTasksScreen> {
   
   // ============================================================
   // MODIFICATION: AUTHENTICATED SECURE DOWNLOAD HANDLER
+  // FIXED: Filename extension handling to prevent corruption.
   // ============================================================
-  Future<void> _launchSecureUrl(String url, String fileName) async {
+  Future<void> _launchSecureUrl(String url, String originalFileName) async {
     try {
-      _showSnackBar("Preparing secure download...");
+      _showSnackBar("Authorizing secure download...");
       
-      // 1. Fetch file bytes with Security Token (JWT)
-      final response = await http.get(
-        Uri.parse(url),
-        headers: { 'Authorization': 'Bearer ${AuthService.token}' },
-      );
+      final response = await http.get(Uri.parse(url), headers: { 'Authorization': 'Bearer ${AuthService.token}' });
 
       if (response.statusCode == 200) {
-        if (kIsWeb) {
-          // Logic for Web: Trigger local browser download via Blob
-          final blob = html.Blob([response.bodyBytes]);
-          final url = html.Url.createObjectUrlFromBlob(blob);
-          final anchor = html.AnchorElement(href: url)
-            ..setAttribute("download", "$fileName.pdf") // Adjust extension if necessary
-            ..click();
-          html.Url.revokeObjectUrl(url);
-        } else {
-          // Logic for Mobile: Since private storage is complex for system browsers,
-          // it is safer to preview the work and then trigger external launch if necessary.
-          // For now, we use standard launch which may require a shared browser session.
-          final Uri u = Uri.parse(url); 
-          if (await canLaunchUrl(u)) await launchUrl(u, mode: LaunchMode.externalApplication); 
+        if (response.headers['content-type']?.contains('application/json') ?? false) {
+           _showSnackBar("Access Denied: Could not retrieve file."); return;
         }
-      } else {
-        _showSnackBar("Access Denied: You are not authorized for this file.");
-      }
-    } catch (e) {
-      _showSnackBar("Download error: $e");
-    }
+
+        if (kIsWeb) {
+          // Logic: Creating a blob with the correct original filename
+          final blob = html.Blob([response.bodyBytes], 'application/octet-stream');
+          final blobUrl = html.Url.createObjectUrlFromBlob(blob);
+          final anchor = html.AnchorElement(href: blobUrl)
+            ..setAttribute("download", originalFileName) // Using the actual name
+            ..click();
+          html.Url.revokeObjectUrl(blobUrl);
+          _showSnackBar("Download successful: $originalFileName");
+        } else {
+          // On mobile, navigate to secure viewer since system browsers can't handle JWT downloads.
+          // The UnifiedPreviewScreen now contains the download logic for mobile.
+          Navigator.push(context, MaterialPageRoute(builder: (_) => UnifiedPreviewScreen(url: url, title: originalFileName)));
+        }
+      } else { _showSnackBar("Access Denied (${response.statusCode})"); }
+    } catch (e) { _showSnackBar("Download error: $e"); }
   }
 }
