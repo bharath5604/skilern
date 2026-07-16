@@ -10,11 +10,14 @@ const connectDB = require('./config/db');
 const app = express();
 const server = http.createServer(app); // Wrap express app with HTTP server
 
-// Initialize Socket.io
+// =============================================================================
+// INITIALIZE SOCKET.IO WITH EXPANDED CORS
+// =============================================================================
 const io = new Server(server, {
   cors: {
-    origin: "https://api.skilern.com", // Adjust this to your production domain in live mode
+    origin: ["https://skilern.com", "https://api.skilern.com"], 
     methods: ["GET", "POST"],
+    allowedHeaders: ["Authorization"],
     credentials: true
   }
 });
@@ -90,19 +93,21 @@ function loadRoute(modulePath, label) {
 
 /*
 =====================================
-MIDDLEWARE
+MIDDLEWARE & CORS SECURITY FIX
 =====================================
 */
 app.use(
   cors({
-    origin: "https://api.skilern.com", // Set this to your production domain when deploying to VPS
+    origin: ["https://skilern.com", "https://api.skilern.com"], // Fixed: Added main domain
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"], // Added all necessary methods
+    allowedHeaders: ["Content-Type", "Authorization", "Accept"], // CRITICAL: Allows the JWT token header
     credentials: true,
   })
 );
 
 app.use(
   express.json({
-    limit: '15mb', // Increased limit for larger JSON payloads if needed
+    limit: '15mb', 
   })
 );
 
@@ -147,8 +152,6 @@ const skillRoutes = loadRoute('./routes/skills', 'skillRoutes');
 const adminRoutes = loadRoute('./routes/admin', 'adminRoutes');
 const studentsRoutes = loadRoute('./routes/students', 'studentsRoutes');
 const notificationsRoutes = loadRoute('./routes/notifications', 'notificationsRoutes');
-
-// NEW MODIFICATION: SECURE VPS FILE SYSTEM
 const fileRoutes = loadRoute('./routes/files', 'fileRoutes');
 
 app.use('/api/notifications', notificationsRoutes);
@@ -161,8 +164,6 @@ app.use('/api/messages', messageRoutes);
 app.use('/api/skills', skillRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/students', studentsRoutes);
-
-// Register the Protected File Route
 app.use('/api/files', fileRoutes);
 
 /*
@@ -214,7 +215,7 @@ async function startServer() {
     await connectDB();
 
     activeServer = server.listen(PORT, '0.0.0.0', () => {
-      console.log(`Server running on port ${PORT} (Secure Storage Enabled)`);
+      console.log(`Server running on port ${PORT} (Secure Storage & Global CORS Active)`);
     });
 
     activeServer.on('error', (err) => {

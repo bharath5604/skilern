@@ -1,12 +1,26 @@
 // backend/middleware/authMiddleware.js
 const jwt = require('jsonwebtoken');
-const User = require('../models/User'); // MODIFICATION: Imported User model
+const User = require('../models/User'); 
 
 module.exports = async (req, res, next) => {
-  try {
-    const authHeader = req.headers.authorization;
+  // ============================================================
+  // 1. CORS PRE-FLIGHT BYPASS
+  // ============================================================
+  // Browsers send an OPTIONS request before the actual request.
+  // These pre-flight requests do NOT contain the Authorization header.
+  if (req.method === 'OPTIONS') {
+    return next();
+  }
 
-    // 1. Check for presence of Authorization header
+  try {
+    // ============================================================
+    // 2. HEADER EXTRACTION
+    // ============================================================
+    const authHeader = req.headers.authorization || req.headers.Authorization;
+
+    // DEBUG: Uncomment the line below to see incoming headers in your VPS logs (pm2 logs)
+    // console.log(`[AUTH DEBUG] Path: ${req.originalUrl} | Header: ${authHeader ? 'Received' : 'MISSING'}`);
+
     if (!authHeader) {
       return res.status(401).json({
         success: false,
@@ -16,7 +30,6 @@ module.exports = async (req, res, next) => {
 
     const [scheme, token] = authHeader.split(' ');
 
-    // 2. Validate Bearer format
     if (scheme !== 'Bearer' || !token) {
       return res.status(401).json({
         success: false,
@@ -24,37 +37,34 @@ module.exports = async (req, res, next) => {
       });
     }
 
-    // 3. Ensure JWT Secret is configured on server
+    // ============================================================
+    // 3. JWT VERIFICATION
+    // ================= scheme.token
     if (!process.env.JWT_SECRET) {
-      console.error('authMiddleware error: JWT_SECRET is not set');
+      console.error('CRITICAL: JWT_SECRET environment variable is not configured on VPS.');
       return res.status(500).json({
         success: false,
         message: 'Server configuration error',
       });
     }
 
-    // 4. Verify and Decode Token
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
     // ============================================================
-    // MODIFICATION: DATABASE VALIDATION (REAL-TIME SECURITY)
+    // 4. DATABASE VALIDATION (REAL-TIME SECURITY)
     // ============================================================
-    
-    // Query the database to ensure this user hasn't been deleted or banned
-    // We only select the ID and Approval status to keep the query fast
-    const user = await User.findById(decoded.id).select('_id isApproved');
+    // Logic: Ensure the user still exists and hasn't been banned/deactivated.
+    const user = await User.findById(decoded.id).select('_id isApproved role');
 
     if (!user) {
-      // SCENARIO: User was deleted from the database
       return res.status(401).json({
         success: false,
-        message: 'Account no longer exists. Please sign up again.',
+        message: 'This account no longer exists.',
         code: 'USER_DELETED'
       });
     }
 
     if (!user.isApproved) {
-      // SCENARIO: Admin has deactivated/banned this account
       return res.status(403).json({
         success: false,
         message: 'Your account is currently suspended. Please contact support.',
@@ -62,31 +72,34 @@ module.exports = async (req, res, next) => {
       });
     }
 
-    // Attach decoded token data to request object
+    // Attach decoded data to request object for use in controllers
     req.user = decoded;
 
     return next();
+
   } catch (error) {
     console.error('authMiddleware error:', error.message);
 
-    // Specific JWT error handling
+    // Explicit error categorization for better Frontend feedback
     if (error.name === 'TokenExpiredError') {
       return res.status(401).json({
         success: false,
         message: 'Your session has expired. Please login again.',
+        code: 'TOKEN_EXPIRED'
       });
     }
 
     if (error.name === 'JsonWebTokenError') {
       return res.status(401).json({
         success: false,
-        message: 'Invalid security token.',
+        message: 'Security token is invalid or malformed.',
+        code: 'INVALID_TOKEN'
       });
     }
 
     return res.status(401).json({
       success: false,
-      message: 'Invalid or expired token',
+      message: 'Authentication failed',
     });
   }
 };

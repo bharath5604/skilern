@@ -46,6 +46,7 @@ class _AdminTaskDetailScreenState extends State<AdminTaskDetailScreen> {
     super.initState();
     _taskData = _safeMap(widget.task);
     
+    // Real-time Sync
     SocketService.connect();
     SocketService.joinTaskRoom(_taskId()); 
     
@@ -142,19 +143,8 @@ class _AdminTaskDetailScreenState extends State<AdminTaskDetailScreen> {
       final filters = await adminService.getStudentFilters();
       if (mounted) {
         setState(() {
-          availableLocs = filters['locations']!
-              .map((loc) => loc.trim().split(' ').map((str) => 
-                  str.isEmpty ? "" : str[0].toUpperCase() + str.substring(1).toLowerCase()).join(' '))
-              .toSet()
-              .toList()
-              ..sort();
-
-          availableSkills = filters['skills']!
-              .map((s) => s.trim().split(' ').map((str) => 
-                  str.isEmpty ? "" : str[0].toUpperCase() + str.substring(1).toLowerCase()).join(' '))
-              .toSet()
-              .toList()
-              ..sort();
+          availableLocs = List<String>.from(filters['locations'] ?? []);
+          availableSkills = List<String>.from(filters['skills'] ?? []);
         });
       }
     } catch (_) {}
@@ -225,7 +215,7 @@ class _AdminTaskDetailScreenState extends State<AdminTaskDetailScreen> {
   void _openChat(String? studentId) {
     Navigator.pushNamed(context, '/taskChat', arguments: {
       'taskId': _taskId(),
-      'taskTitle': _safeString(_taskMap()['title']),
+      'taskTitle': _safeString(_taskData['title']),
       'peerStudentId': studentId
     });
   }
@@ -402,57 +392,85 @@ class _AdminTaskDetailScreenState extends State<AdminTaskDetailScreen> {
   }
 
   // ============================================================
-  // MODIFICATION: MULTI-FILE QUALITY CHECK LIST
+  // UI: QUALITY CHECK SECTION (FIXED VISIBILITY)
+  // Handles new List format AND legacy String format.
   // ============================================================
   Widget _buildSubmissionSection() {
     final submission = _safeMap(_taskData['submission']);
-    final List files = submission['files'] as List? ?? [];
-    if (files.isEmpty) return const SizedBox.shrink();
+    if (submission.isEmpty) return const SizedBox.shrink();
+
+    final List files = submission['files'] is List ? submission['files'] : [];
+    final String? legacyUrl = submission['fileUrl']?.toString();
+
+    // If both are empty, there is nothing to show
+    if (files.isEmpty && (legacyUrl == null || legacyUrl.isEmpty)) {
+      return const SizedBox.shrink();
+    }
 
     return Container(
       margin: const EdgeInsets.only(top: 16),
       padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(color: const Color(0xFFE8F5E9), borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.green.shade200)),
+      decoration: BoxDecoration(
+        color: const Color(0xFFE8F5E9), 
+        borderRadius: BorderRadius.circular(20), 
+        border: Border.all(color: Colors.green.shade200)
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('STUDENT SUBMISSION - QUALITY CHECK', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: Colors.green)),
-          const SizedBox(height: 12),
+          const Row(
+            children: [
+              Icon(Icons.fact_check_rounded, color: Colors.green, size: 20),
+              SizedBox(width: 8),
+              Text('ADMIN QUALITY CHECK: STUDENT WORK', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 11, color: Colors.green)),
+            ],
+          ),
+          const SizedBox(height: 14),
           
-          ...files.map((file) {
-            final String fUrl = file['url']?.toString() ?? '';
-            final String fName = file['name']?.toString() ?? 'File';
+          // 1. Render Multi-File format
+          if (files.isNotEmpty)
+            ...files.map((file) {
+              final String fUrl = file['url']?.toString() ?? '';
+              final String fName = file['name']?.toString() ?? 'Work File';
+              return _fileQualityCheckTile(fName, fUrl);
+            }).toList(),
 
-            return Container(
-              margin: const EdgeInsets.only(bottom: 8),
-              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
-              child: ListTile(
-                dense: true,
-                leading: const Icon(Icons.description_outlined, color: Colors.green),
-                title: Text(fName, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                trailing: const Icon(Icons.chevron_right, size: 16),
-                onTap: () {
-                  // Opens internal previewer which handles authenticated downloads for quality check
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => UnifiedPreviewScreen(
-                        url: fUrl, 
-                        title: "Reviewing: $fName"
-                      ),
-                    ),
-                  );
-                },
-              ),
-            );
-          }).toList(),
+          // 2. Fallback for old tasks (Legacy Single File)
+          if (files.isEmpty && legacyUrl != null && legacyUrl.isNotEmpty)
+            _fileQualityCheckTile("Work Deliverable (Single File)", legacyUrl),
 
           if (submission['notes'] != null && submission['notes'].toString().isNotEmpty) ...[
-            const SizedBox(height: 10),
-            const Text("STUDENT NOTE:", style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: Colors.blueGrey)),
-            Text(submission['notes'], style: const TextStyle(fontSize: 12, color: Colors.black54, fontStyle: FontStyle.italic)),
+            const SizedBox(height: 12),
+            const Text("STUDENT SUBMISSION NOTE:", style: TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: Colors.blueGrey)),
+            const SizedBox(height: 4),
+            Text(submission['notes'], style: const TextStyle(fontSize: 12, color: Colors.black87, fontStyle: FontStyle.italic)),
           ]
         ],
+      ),
+    );
+  }
+
+  Widget _fileQualityCheckTile(String name, String url) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.green.withOpacity(0.1))),
+      child: ListTile(
+        dense: true,
+        leading: const Icon(Icons.insert_drive_file_outlined, color: Colors.green),
+        title: Text(name, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+        subtitle: const Text("Tap to verify or download", style: TextStyle(fontSize: 10, color: Colors.grey)),
+        trailing: const Icon(Icons.remove_red_eye_outlined, color: Colors.blue, size: 18),
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => UnifiedPreviewScreen(
+                url: url, 
+                title: "Quality Check: $name"
+              ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -586,7 +604,9 @@ class _AdminTaskDetailScreenState extends State<AdminTaskDetailScreen> {
               ],
             ),
           ),
-          _buildSubmissionSection(),
+          
+          _buildSubmissionSection(), // <--- THE UPDATED QUALITY CHECK ZONE
+          
           _buildBudgetFinalizer(), 
           _buildAdminPaymentControl(),
           const SizedBox(height: 16),
@@ -631,6 +651,5 @@ class _AdminTaskDetailScreenState extends State<AdminTaskDetailScreen> {
   }
 
   Future<void> _makeCall(String num) async { if (num.isEmpty) return; final Uri u = Uri(scheme: 'tel', path: num); if (await canLaunchUrl(u)) await launchUrl(u); }
-  Future<void> _openUrl(String? url) async { if (url == null || url.isEmpty) return; final Uri u = Uri.parse(url); if (await canLaunchUrl(u)) await launchUrl(u, mode: LaunchMode.externalApplication); }
   void _showSnackBar(String m) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m), behavior: SnackBarBehavior.floating));
 }
