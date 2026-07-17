@@ -9,7 +9,7 @@ const Task = require('../models/Task');
 const User = require('../models/User');
 const Payment = require('../models/Payment');
 const verifyJWT = require('../middleware/authMiddleware');
-const { sendNotification } = require('../utils/fcm'); // Enhanced with VPS Socket support
+const { sendNotification } = require('../utils/fcm');
 
 // =========================================================
 // RAZORPAY INITIALIZATION
@@ -38,12 +38,13 @@ if (key_id && key_secret && key_id !== 'PLACEHOLDER' && key_secret !== 'PLACEHOL
 
 /**
  * Real-time Broadcast Helper
+ * Refreshes specific UI components on Client, Admin, and Student apps.
  */
 const emitPaymentUpdate = (req, room, event, data) => {
   const io = req.app.get('socketio');
   if (io) {
     io.to(room).emit(event, data);
-    // Refresh global dashboard counters
+    // Refresh global dashboard counters for all admins
     io.emit('admin_stats_update', { timestamp: new Date() });
   }
 };
@@ -51,12 +52,13 @@ const emitPaymentUpdate = (req, room, event, data) => {
 /**
  * POST /api/payments/create-order
  * Triggered by Client App to start a payment session.
+ * MODIFIED: Enforces automatic capture.
  */
 router.post('/create-order', verifyJWT, async (req, res) => {
   try {
     if (!isRazorpayActive || !razorpay) {
       return res.status(503).json({ 
-        message: 'Automatic payment gateway is currently unavailable. Please use manual QR method.' 
+        message: 'Automatic payment gateway is currently unavailable.' 
       });
     }
 
@@ -73,11 +75,16 @@ router.post('/create-order', verifyJWT, async (req, res) => {
       amount: Math.round(task.budget * 100), // INR to Paise
       currency: "INR",
       receipt: `receipt_${taskId}_${Date.now()}`,
+      // ============================================================
+      // MODIFICATION: AUTOMATIC CAPTURE
+      // Forces Razorpay to capture the payment immediately after auth.
+      // ============================================================
       payment_capture: 1 
     };
 
     const order = await razorpay.orders.create(options);
 
+    // Initialize or update the Payment Ledger
     let paymentRecord = await Payment.findOne({ task: taskId });
     if (!paymentRecord) {
         paymentRecord = new Payment({
@@ -110,7 +117,8 @@ router.post('/create-order', verifyJWT, async (req, res) => {
 
 /**
  * POST /api/payments/webhook
- * AUTOMATIC: Secure verification triggered by Razorpay servers.
+ * AUTOMATIC: Triggered by Razorpay events.
+ * MODIFIED: Automates Task Unlocking and Payout Ticks.
  */
 router.post('/webhook', async (req, res) => {
   const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
@@ -121,7 +129,7 @@ router.post('/webhook', async (req, res) => {
   }
 
   try {
-    // SECURITY: Verify that this request actually came from Razorpay
+    // SECURITY: HMAC Signature Verification
     const shasum = crypto.createHmac('sha256', secret);
     shasum.update(JSON.stringify(req.body));
     const digest = shasum.digest('hex');
@@ -134,6 +142,9 @@ router.post('/webhook', async (req, res) => {
     const event = req.body.event;
     const payload = req.body.payload.payment.entity;
 
+    // ============================================================
+    // AUTOMATION LOGIC: ON CAPTURED
+    // ============================================================
     if (event === 'payment.captured') {
       const orderId = payload.order_id;
       
@@ -145,65 +156,70 @@ router.post('/webhook', async (req, res) => {
         const task = await Task.findById(paymentRecord.task);
         const student = await User.findById(paymentRecord.student);
 
-        // Update Task and status
-        task.adminReceivedPayment = true; 
-        task.status = 'completed';
-        task.clientCanDownload = true; // Auto-unlock deliverables
+        if (task) {
+            // 1. Update Task Workflow Gates
+            task.adminReceivedPayment = true; // Sets the "Admin Tick" automatically
+            task.clientCanDownload = true;    // Unlocks "Save to Device" for Client
+            task.status = 'completed';        // Move task to final state
+            await task.save();
 
-        paymentRecord.final.status = 'paid';
-        paymentRecord.final.paymentId = payload.id;
-        paymentRecord.final.paidAt = new Date();
-        paymentRecord.final.method = 'razorpay';
-        paymentRecord.status = 'completed';
+            // 2. Update Internal Payment Ledger
+            paymentRecord.final.status = 'paid';
+            paymentRecord.final.paymentId = payload.id;
+            paymentRecord.final.paidAt = new Date();
+            paymentRecord.final.method = 'razorpay';
+            paymentRecord.status = 'completed';
+            await paymentRecord.save();
 
-        // Credit Student Virtual Wallet
-        if (student) {
-          const creditAmount = paymentRecord.netToStudent || task.budget;
-          student.wallet = (student.wallet || 0) + creditAmount;
-          student.tasksCompleted += 1;
-          await student.save();
-          
-          // Notify Student Dashboard to update points live
-          emitPaymentUpdate(req, student._id.toString(), 'feedback_update', { 
-            walletBalance: student.wallet 
-          });
-        }
-        
-        await paymentRecord.save();
-        await task.save();
+            // 3. Credit Student Virtual Wallet
+            if (student) {
+              const creditAmount = paymentRecord.netToStudent || task.budget;
+              student.wallet = (student.wallet || 0) + creditAmount;
+              student.tasksCompleted += 1;
+              await student.save();
+              
+              // Signal Student Dashboard to update wallet counters live
+              emitPaymentUpdate(req, student._id.toString(), 'feedback_update', { 
+                walletBalance: student.wallet 
+              });
+            }
 
-        // ============================================================
-        // REAL-TIME NOTIFICATIONS (VPS SOCKETS + MONGODB MESSENGER)
-        // ============================================================
-        
-        // 1. Notify Client Thread Room (Refresh Task Card)
-        emitPaymentUpdate(req, `${task._id}_client`, 'task_update', { 
-            taskId: task._id, 
-            adminReceivedPayment: true,
-            clientCanDownload: true,
-            status: 'completed'
-        });
+            // ============================================================
+            // REAL-TIME UI BROADCASTS (VPS SOCKETS)
+            // ============================================================
+            
+            // A. Refresh Client Screen (Unlocks Download Button)
+            emitPaymentUpdate(req, `${task._id}_client`, 'task_update', { 
+                taskId: task._id, 
+                adminReceivedPayment: true,
+                clientCanDownload: true,
+                status: 'completed'
+            });
 
-        // 2. Notify Admin Global Room
-        emitPaymentUpdate(req, 'admin_room', 'task_update', { taskId: task._id });
+            // B. Refresh Admin Detail View (Shows green payment tick)
+            emitPaymentUpdate(req, task._id.toString(), 'task_update', { taskId: task._id });
 
-        // 3. Send MongoDB + Socket + FCM Notifications
-        if (task.client) {
-            // MODIFICATION: Added 'req' to pass to the MongoDB Notification System
-            await sendNotification(task.client.toString(), {
-                title: "Payment Verified!",
-                body: `Your payment for "${task.title}" is confirmed. Downloads are now unlocked.`,
-                data: { type: "payment_needed", taskId: task._id.toString() }
-            }, req); 
-        }
+            // C. Refresh Admin Global Counter (Operational Funnel updates)
+            emitPaymentUpdate(req, 'admin_room', 'task_update', { taskId: task._id });
 
-        if (student) {
-            // MODIFICATION: Added 'req' to pass to the MongoDB Notification System
-            await sendNotification(student._id.toString(), {
-                title: "Earnings Credited",
-                body: `Payment for "${task.title}" has been added to your virtual wallet.`,
-                data: { type: "payment_received", taskId: task._id.toString() }
-            }, req);
+            // ============================================================
+            // PUSH NOTIFICATIONS
+            // ============================================================
+            if (task.client) {
+                await sendNotification(task.client.toString(), {
+                    title: "Payment Confirmed! ✅",
+                    body: `Your payment for "${task.title}" is confirmed. All files are now unlocked.`,
+                    data: { type: "payment_needed", taskId: task._id.toString() }
+                }, req); 
+            }
+
+            if (student) {
+                await sendNotification(student._id.toString(), {
+                    title: "Project Completed 💰",
+                    body: `Payment for "${task.title}" has been added to your wallet.`,
+                    data: { type: "payment_received", taskId: task._id.toString() }
+                }, req);
+            }
         }
       }
     }

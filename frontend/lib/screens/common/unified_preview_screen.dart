@@ -36,7 +36,7 @@ class _UnifiedPreviewScreenState extends State<UnifiedPreviewScreen> {
   Uint8List? _fileBytes; 
   bool _isVideo = false;
   bool _isPdf = false;
-  bool _isUnsupportedPreview = false; // For Excel, Word, ZIP, etc.
+  bool _isUnsupportedPreview = false; 
   bool _isLoading = true;
   bool _isDownloading = false;
   String? _errorMessage;
@@ -52,8 +52,8 @@ class _UnifiedPreviewScreenState extends State<UnifiedPreviewScreen> {
     try {
       final String path = widget.url.toLowerCase();
       
-      // 1. Identify File Category
-      if (path.contains('.mp4') || path.contains('.mov') || path.contains('.avi') || path.contains('.m4v')) {
+      // 1. Identify File Category with robust extension checking
+      if (path.endsWith('.mp4') || path.endsWith('.mov') || path.endsWith('.avi') || path.contains('.m4v')) {
         _isVideo = true;
         await _initializeSecureVideo();
       } 
@@ -83,14 +83,14 @@ class _UnifiedPreviewScreenState extends State<UnifiedPreviewScreen> {
     String? rawToken = AuthService.token;
     if (rawToken == null || rawToken.isEmpty) return {};
 
-    // Remove any existing Bearer prefix to prevent double-prefixing
+    // Remove any existing Bearer prefix to prevent "Bearer Bearer" errors on VPS
     final String cleanToken = rawToken.startsWith('Bearer ') 
         ? rawToken.replaceFirst('Bearer ', '').trim() 
         : rawToken.trim();
 
     return {
       'Authorization': 'Bearer $cleanToken',
-      'Accept': 'application/octet-stream',
+      'Accept': '*/*', 
     };
   }
 
@@ -102,15 +102,21 @@ class _UnifiedPreviewScreenState extends State<UnifiedPreviewScreen> {
     final response = await http.get(Uri.parse(widget.url), headers: headers);
 
     if (response.statusCode == 200) {
-      // Security Check: Did the server return an error JSON instead of a file?
+      // Logic Check: Did the server return an error JSON instead of the file?
       final contentType = response.headers['content-type'] ?? '';
       if (contentType.contains('application/json')) {
         final decoded = jsonDecode(response.body);
         throw Exception(decoded['message'] ?? "Access Denied");
       }
-      _fileBytes = response.bodyBytes;
+      
+      // Successfully received bytes
+      if (mounted) {
+        setState(() {
+          _fileBytes = response.bodyBytes;
+        });
+      }
     } else {
-      throw Exception("VPS Vault Access Denied (${response.statusCode})");
+      throw Exception("VPS Access Denied (${response.statusCode})");
     }
   }
 
@@ -126,19 +132,23 @@ class _UnifiedPreviewScreenState extends State<UnifiedPreviewScreen> {
       
       await _videoPlayerController!.initialize();
       
-      _chewieController = ChewieController(
-        videoPlayerController: _videoPlayerController!,
-        autoPlay: true,
-        aspectRatio: _videoPlayerController!.value.aspectRatio,
-        placeholder: Container(color: Colors.black),
-        showOptions: false,
-      );
+      if (mounted) {
+        setState(() {
+          _chewieController = ChewieController(
+            videoPlayerController: _videoPlayerController!,
+            autoPlay: true,
+            aspectRatio: _videoPlayerController!.value.aspectRatio,
+            placeholder: Container(color: Colors.black),
+            showOptions: false,
+          );
+        });
+      }
     } catch (e) {
-      throw Exception("Video stream failed. Check permissions.");
+      throw Exception("Secure video stream failed. Check permissions.");
     }
   }
 
-  /// MODIFICATION: Secure Download Handler (Prevents Corrupted Files)
+  /// MODIFICATION: Secure Download Handler (Used by Client and Admin Quality Check)
   Future<void> _downloadFile() async {
     if (_isDownloading) return;
     setState(() => _isDownloading = true);
@@ -152,19 +162,18 @@ class _UnifiedPreviewScreenState extends State<UnifiedPreviewScreen> {
           final blob = html.Blob([response.bodyBytes], 'application/octet-stream');
           final url = html.Url.createObjectUrlFromBlob(blob);
           final anchor = html.AnchorElement(href: url)
-            ..setAttribute("download", widget.title) // Correct filename preservation
+            ..setAttribute("download", widget.title) // Ensures correct extension (.xlsx, .pdf, etc.)
             ..click();
           html.Url.revokeObjectUrl(url);
-          _showSnack("File saved: ${widget.title}");
+          _showSnack("Saved: ${widget.title}");
         } else {
-          // On Mobile, we leverage the existing byte fetch and prompt a success
-          _showSnack("Deliverable retrieved. Previewing...");
+          _showSnack("File retrieved. Use a file manager to view.");
         }
       } else {
-        throw Exception("Server rejected download request.");
+        throw Exception("Server rejected secure download.");
       }
     } catch (e) {
-      _showSnack("Error: $e");
+      _showSnack("Download failed: $e");
     } finally {
       if (mounted) setState(() => _isDownloading = false);
     }
@@ -191,7 +200,7 @@ class _UnifiedPreviewScreenState extends State<UnifiedPreviewScreen> {
         leading: IconButton(icon: const Icon(Icons.close_rounded, color: Colors.black87), onPressed: () => Navigator.pop(context)),
         title: Text(widget.title, style: const TextStyle(color: Colors.black87, fontSize: 13, fontWeight: FontWeight.bold)),
         actions: [
-          // Logic: Quality check icon for Admin, or download icon for unlocked files
+          // Quality check icon for Admin, or download icon for unlocked files
           if (isAdmin || _isUnsupportedPreview)
             IconButton(
               icon: _isDownloading 
@@ -224,8 +233,8 @@ class _UnifiedPreviewScreenState extends State<UnifiedPreviewScreen> {
               const SizedBox(height: 8),
               Text(
                 isAdmin 
-                ? "As an Admin, please download this file to perform a quality check."
-                : "This file type must be downloaded to be viewed correctly.",
+                ? "As an Admin, you can download this file to perform a quality check."
+                : "This file type (${widget.url.split('.').last.toUpperCase()}) must be downloaded to be viewed.",
                 textAlign: TextAlign.center,
                 style: const TextStyle(color: Colors.grey, fontSize: 13),
               ),
@@ -247,7 +256,16 @@ class _UnifiedPreviewScreenState extends State<UnifiedPreviewScreen> {
       );
     }
 
-    if (_isPdf && _fileBytes != null) return SfPdfViewer.memory(_fileBytes!); 
+    // FIXED PDF VIEWER: Using Key + Memory Check
+    if (_isPdf && _fileBytes != null && _fileBytes!.isNotEmpty) {
+      return SfPdfViewer.memory(
+        _fileBytes!,
+        key: ValueKey(widget.url), // Forces refresh when bytes are set
+        onDocumentLoadFailed: (details) {
+          if(mounted) setState(() => _errorMessage = "PDF Rendering Failed: ${details.description}");
+        },
+      ); 
+    } 
     
     if (_isVideo) {
       if (_chewieController != null && _chewieController!.videoPlayerController.value.isInitialized) {
@@ -265,7 +283,7 @@ class _UnifiedPreviewScreenState extends State<UnifiedPreviewScreen> {
       );
     }
 
-    return _buildErrorView("Unable to render file contents.");
+    return _buildErrorView("No renderable content found.");
   }
 
   Widget _buildErrorView(String msg) {
