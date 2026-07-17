@@ -8,15 +8,14 @@ const User = require('../models/User');
  * Validates if the current user has the right to access a specific file.
  * Logic: 
  * 1. Admin has access to everything.
- * 2. If it's a Student ID, only that Student and Admin can see it.
- * 3. If it's a Task file, only the assigned Student and the Client can see it.
+ * 2. Users can see their own identity documents.
+ * 3. Students and Clients can see files linked to their specific tasks.
  */
 const checkFileAuthorization = async (user, filename) => {
     // 1. ADMIN OVERRIDE
     if (user.role === 'admin') return true;
 
     // 2. IDENTITY PROOF CHECK
-    // Logic: Users can only see their own ID cards
     const userWithId = await User.findOne({ 
         _id: user.id, 
         idCardUrl: { $regex: filename } 
@@ -24,22 +23,20 @@ const checkFileAuthorization = async (user, filename) => {
     if (userWithId) return true;
 
     // 3. TASK-RELATED FILE CHECK (Deliverables and Attachments)
-    // Logic: User must be the Client or the Student for the task
-    // and the filename must exist in the Task record.
     const task = await Task.findOne({
         $and: [
-            // Permission scope: User must be part of the task
+            // User must be either the assigned student or the client for the task
             { $or: [{ student: user.id }, { client: user.id }] },
             
-            // Resource scope: Requested file must be linked to this task
+            // The filename must exist in the database record for that task
             { $or: [
-                // A: New Multi-file submission array
+                // Check new multi-file array
                 { "submission.files.url": { $regex: filename } },
                 
-                // B: Legacy Single-file submission string
+                // Check legacy single-file string (for backwards compatibility)
                 { "submission.fileUrl": { $regex: filename } },
                 
-                // C: Project setup attachments (briefs, samples)
+                // Check initial task attachments
                 { "attachments": { $regex: filename } }
             ]}
         ]
@@ -50,15 +47,13 @@ const checkFileAuthorization = async (user, filename) => {
 
 /**
  * Standard response for Multer uploads.
- * Used for both Registration IDs and Task Deliverables.
+ * Returns the generated filename to the frontend.
  */
 exports.handleUploadResponse = (req, res) => {
     if (!req.file) {
         return res.status(400).json({ success: false, message: 'No file received' });
     }
 
-    // Logic: We return only the filename. 
-    // The frontend constructs the protected URL: /api/files/view/:filename
     res.json({
         success: true,
         filename: req.file.filename,
@@ -69,8 +64,12 @@ exports.handleUploadResponse = (req, res) => {
 
 /**
  * SECURE FILE STREAMER
- * Provides authenticated handshakes for private VPS storage.
- * FIX: Explicit MIME mapping and Header Exposure for Flutter PDF/Image rendering.
+ * Provides authenticated binary handshakes for private VPS storage.
+ * 
+ * FIX APPLIED: 
+ * 1. Explicit MIME Type mapping (Required for Flutter PDF Rendering).
+ * 2. Access-Control-Expose-Headers (Allows Flutter to read metadata).
+ * 3. ReadStream piping (Ensures clean binary delivery).
  */
 exports.streamFile = async (req, res) => {
     try {
@@ -105,6 +104,7 @@ exports.streamFile = async (req, res) => {
 
         // ============================================================
         // FIX: EXPLICIT MIME-TYPE MAPPING (CRITICAL FOR PDF PREVIEW)
+        // This tells the browser/Flutter exactly what type of data is coming.
         // ============================================================
         let contentType = 'application/octet-stream';
         if (ext === '.pdf') contentType = 'application/pdf';
@@ -117,7 +117,7 @@ exports.streamFile = async (req, res) => {
         const range = req.headers.range;
 
         // 3. STREAMING LOGIC
-        // Support for Video/Media Streaming (Partial Content)
+        // Support for Video/Media Streaming (Partial Content / Byte Ranges)
         if (range) {
             const parts = range.replace(/bytes=/, "").split("-");
             const start = parseInt(parts[0], 10);
@@ -142,23 +142,33 @@ exports.streamFile = async (req, res) => {
         } else {
             // ============================================================
             // FIX: EXPOSE HEADERS FOR FLUTTER/BROWSER HANDSHAKE
-            // This ensures the frontend can see the type and size
+            // Without this, the Flutter app cannot "see" the Content-Type
+            // across the CORS boundary, which causes rendering to fail.
             // ============================================================
             const head = {
                 'Content-Length': fileSize,
                 'Content-Type': contentType,
                 'Access-Control-Expose-Headers': 'Content-Type, Content-Length',
                 'Content-Disposition': `inline; filename="${filename}"`,
-                'Cache-Control': 'no-cache'
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'Pragma': 'no-cache',
+                'Expires': '0'
             };
+            
             res.writeHead(200, head);
             
-            // Using a clean ReadStream to prevent memory bottlenecks on VPS
+            // Using a clean ReadStream to pipe binary data directly to the response
             const stream = fs.createReadStream(filePath);
+            stream.on('error', (err) => {
+                console.error("Stream pipe error:", err);
+                if (!res.headersSent) res.status(500).end();
+            });
             stream.pipe(res);
         }
     } catch (error) {
-        console.error("Critical File Streaming Error:", error);
-        res.status(500).json({ success: false, message: "Internal server error during file retrieval." });
+        console.error("Critical Vault Stream Error:", error);
+        if (!res.headersSent) {
+            res.status(500).json({ success: false, message: "Internal server error during file retrieval." });
+        }
     }
 };
