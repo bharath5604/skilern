@@ -537,9 +537,89 @@ class _HeroSliderSectionState extends State<_HeroSliderSection> {
 }
 
 class _AnimatedAppBar extends StatelessWidget {
-  final VoidCallback onEmergencyPost; const _AnimatedAppBar({required this.onEmergencyPost});
-  @override Widget build(BuildContext context) {
-    return Container(margin: const EdgeInsets.all(12), padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)]), child: Row(children: [RichText(text: const TextSpan(children: [TextSpan(text: 'SKI', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Color(0xFF6A11CB))), TextSpan(text: 'LERN', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Color(0xFF2575FC)))])), const Spacer(), TextButton(onPressed: onEmergencyPost, child: const Text('Emergency Post', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold))), const SizedBox(width: 8), ElevatedButton(onPressed: () => Navigator.pushNamed(context, '/login'), style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6A11CB), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), child: const Text('Sign In', style: TextStyle(color: Colors.white)))]));
+  final VoidCallback onEmergencyPost;
+  const _AnimatedAppBar({required this.onEmergencyPost});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.all(12),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)
+        ],
+      ),
+      child: Row(
+        children: [
+          // ============================================================
+          // ADDED: APP LOGO
+          // ============================================================
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Image.asset(
+              'assets/images/app_icon.png',
+              height: 32,
+              width: 32,
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) => const Icon(
+                Icons.auto_awesome,
+                color: Color(0xFF6A11CB),
+                size: 24,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          // ============================================================
+          RichText(
+            text: const TextSpan(
+              children: [
+                TextSpan(
+                  text: 'SKI',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                    color: Color(0xFF6A11CB),
+                  ),
+                ),
+                TextSpan(
+                  text: 'LERN',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                    color: Color(0xFF2575FC),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Spacer(),
+          TextButton(
+            onPressed: onEmergencyPost,
+            child: const Text(
+              'Emergency Post',
+              style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+            ),
+          ),
+          const SizedBox(width: 8),
+          ElevatedButton(
+            onPressed: () => Navigator.pushNamed(context, '/login'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF6A11CB),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: const Text(
+              'Sign In',
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

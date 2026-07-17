@@ -167,7 +167,7 @@ class _UnifiedPreviewScreenState extends State<UnifiedPreviewScreen> {
           html.Url.revokeObjectUrl(url);
           _showSnack("Saved: ${widget.title}");
         } else {
-          _showSnack("File retrieved. Use a file manager to view.");
+          _showSnack("File retrieved successfully.");
         }
       } else {
         throw Exception("Server rejected secure download.");
@@ -233,8 +233,8 @@ class _UnifiedPreviewScreenState extends State<UnifiedPreviewScreen> {
               const SizedBox(height: 8),
               Text(
                 isAdmin 
-                ? "As an Admin, you can download this file to perform a quality check."
-                : "This file type (${widget.url.split('.').last.toUpperCase()}) must be downloaded to be viewed.",
+                ? "As an Admin, please download this file to perform a quality check."
+                : "This file type must be downloaded to be viewed correctly.",
                 textAlign: TextAlign.center,
                 style: const TextStyle(color: Colors.grey, fontSize: 13),
               ),
@@ -256,7 +256,7 @@ class _UnifiedPreviewScreenState extends State<UnifiedPreviewScreen> {
       );
     }
 
-    // FIXED PDF VIEWER: Using Key + Memory Check
+    // FIXED PDF VIEWER: Using Key + Memory Check + setState bytes
     if (_isPdf && _fileBytes != null && _fileBytes!.isNotEmpty) {
       return SfPdfViewer.memory(
         _fileBytes!,
