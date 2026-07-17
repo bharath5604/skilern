@@ -65,7 +65,7 @@ class _UnifiedPreviewScreenState extends State<UnifiedPreviewScreen> {
         await _fetchFileWithSecurityToken();
       }
       else {
-        // Handle Excel, Word, CSV, ZIP, etc.
+        // Handle Excel, Word, CSV, ZIP, etc. (Direct Download only)
         _isUnsupportedPreview = true;
       }
     } catch (e) {
@@ -102,17 +102,26 @@ class _UnifiedPreviewScreenState extends State<UnifiedPreviewScreen> {
     final response = await http.get(Uri.parse(widget.url), headers: headers);
 
     if (response.statusCode == 200) {
-      // Logic Check: Did the server return an error JSON instead of the file?
-      final contentType = response.headers['content-type'] ?? '';
-      if (contentType.contains('application/json')) {
-        final decoded = jsonDecode(response.body);
-        throw Exception(decoded['message'] ?? "Access Denied");
+      final bytes = response.bodyBytes;
+
+      // ============================================================
+      // FIX: PDF INTEGRITY CHECK
+      // Ensures we didn't download a JSON error string instead of PDF
+      // ============================================================
+      if (_isPdf && bytes.isNotEmpty) {
+        final header = String.fromCharCodes(bytes.take(4));
+        if (header != "%PDF") {
+           final bodyText = utf8.decode(bytes, allowMalformed: true);
+           if (bodyText.contains("message")) {
+             throw Exception(jsonDecode(bodyText)['message'] ?? "Access Denied");
+           }
+           throw Exception("Invalid file data received from secure vault.");
+        }
       }
       
-      // Successfully received bytes
       if (mounted) {
         setState(() {
-          _fileBytes = response.bodyBytes;
+          _fileBytes = bytes;
         });
       }
     } else {
@@ -162,12 +171,12 @@ class _UnifiedPreviewScreenState extends State<UnifiedPreviewScreen> {
           final blob = html.Blob([response.bodyBytes], 'application/octet-stream');
           final url = html.Url.createObjectUrlFromBlob(blob);
           final anchor = html.AnchorElement(href: url)
-            ..setAttribute("download", widget.title) // Ensures correct extension (.xlsx, .pdf, etc.)
+            ..setAttribute("download", widget.title) // Correct filename preservation
             ..click();
           html.Url.revokeObjectUrl(url);
-          _showSnack("Saved: ${widget.title}");
+          _showSnack("Saved successfully: ${widget.title}");
         } else {
-          _showSnack("File retrieved successfully.");
+          _showSnack("File retrieved from secure storage.");
         }
       } else {
         throw Exception("Server rejected secure download.");
@@ -200,13 +209,13 @@ class _UnifiedPreviewScreenState extends State<UnifiedPreviewScreen> {
         leading: IconButton(icon: const Icon(Icons.close_rounded, color: Colors.black87), onPressed: () => Navigator.pop(context)),
         title: Text(widget.title, style: const TextStyle(color: Colors.black87, fontSize: 13, fontWeight: FontWeight.bold)),
         actions: [
-          // Quality check icon for Admin, or download icon for unlocked files
           if (isAdmin || _isUnsupportedPreview)
             IconButton(
               icon: _isDownloading 
                 ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF6A11CB)))
                 : const Icon(Icons.download_for_offline_rounded, color: Color(0xFF6A11CB)),
               onPressed: _isDownloading ? null : _downloadFile,
+              tooltip: "Download to device",
             ),
           const SizedBox(width: 8),
         ],
@@ -256,14 +265,19 @@ class _UnifiedPreviewScreenState extends State<UnifiedPreviewScreen> {
       );
     }
 
-    // FIXED PDF VIEWER: Using Key + Memory Check + setState bytes
+    // ============================================================
+    // FIXED PDF VIEWER: Using Key + Memory Check + Header Verification
+    // ============================================================
     if (_isPdf && _fileBytes != null && _fileBytes!.isNotEmpty) {
-      return SfPdfViewer.memory(
-        _fileBytes!,
-        key: ValueKey(widget.url), // Forces refresh when bytes are set
-        onDocumentLoadFailed: (details) {
-          if(mounted) setState(() => _errorMessage = "PDF Rendering Failed: ${details.description}");
-        },
+      return Container(
+        color: Colors.white,
+        child: SfPdfViewer.memory(
+          _fileBytes!,
+          key: ValueKey(widget.url + _fileBytes!.length.toString()), // Force Refresh
+          onDocumentLoadFailed: (details) {
+            if(mounted) setState(() => _errorMessage = "Renderer Error: ${details.description}");
+          },
+        ),
       ); 
     } 
     
@@ -271,7 +285,7 @@ class _UnifiedPreviewScreenState extends State<UnifiedPreviewScreen> {
       if (_chewieController != null && _chewieController!.videoPlayerController.value.isInitialized) {
         return Center(child: Chewie(controller: _chewieController!));
       }
-      return const Center(child: Text("Preparing secure stream...", style: TextStyle(color: Colors.white)));
+      return const Center(child: Text("Initializing secure stream...", style: TextStyle(color: Colors.white)));
     }
 
     if (_fileBytes != null) {
@@ -283,7 +297,7 @@ class _UnifiedPreviewScreenState extends State<UnifiedPreviewScreen> {
       );
     }
 
-    return _buildErrorView("No renderable content found.");
+    return _buildErrorView("No renderable content found for this file.");
   }
 
   Widget _buildErrorView(String msg) {

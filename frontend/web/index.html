@@ -1,6 +1,10 @@
 <!DOCTYPE html>
 <html>
 <head>
+  <!--
+    If you are serving your web app in a path other than the root, change the
+    href value below to reflect the base path you are serving from.
+  -->
   <base href="$FLUTTER_BASE_HREF">
 
   <meta charset="UTF-8">
@@ -20,17 +24,19 @@
   <link rel="manifest" href="manifest.json">
 
   <!-- ============================================================
-       MODIFICATION: RAZORPAY WEB SDK
-       Required for payment processing on the web platform.
-       ============================================================ -->
-  <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
-
-  <!-- ============================================================
-       MODIFICATION: SYNCFUSION PDF RENDERER
-       FIX: This script resolves the "PDF Rendering Failed" error 
-       by providing the necessary JS engine for SfPdfViewer.
+       MODIFICATION: SYNCFUSION PDF RENDERER (CRITICAL)
+       FIX: Resolves the "PDF Rendering Failed" and blank screen errors 
+       by providing the core JS engine needed for SfPdfViewer.
        ============================================================ -->
   <script src="https://cdn.syncfusion.com/sdk/js/purejs/syncfusion-pdf-js/24.1.41/syncfusion-pdf.js" type="text/javascript"></script>
+
+  <!-- ============================================================
+       MODIFICATION: RAZORPAY WEB SDK
+       OPTIMIZATION: Added 'defer' to prevent browser pre-load 
+       warnings and ensure smoother page initialization.
+       ============================================================ -->
+  <script src="https://checkout.razorpay.com/v1/checkout.js" defer></script>
+
 </head>
 <body>
   <script>
@@ -38,7 +44,7 @@
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', async function () {
         try {
-          // Ensure firebase-messaging-sw.js exists in your web/ folder
+          // Note: ensure firebase-messaging-sw.js exists in your web/ folder
           await navigator.serviceWorker.register('/firebase-messaging-sw.js', {
             scope: '/firebase-cloud-messaging-push-scope',
           });

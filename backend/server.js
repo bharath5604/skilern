@@ -1,45 +1,62 @@
 // backend/server.js
 const express = require('express');
 const cors = require('cors');
-const http = require('http'); // Required for Socket.io
-const { Server } = require('socket.io'); // Required for Real-time
+const http = require('http'); 
+const { Server } = require('socket.io'); 
+const path = require('path'); // Required for serving frontend build
 require('dotenv').config();
 
 const connectDB = require('./config/db');
 
 const app = express();
-const server = http.createServer(app); // Wrap express app with HTTP server
+const server = http.createServer(app); 
 
 // =============================================================================
-// INITIALIZE SOCKET.IO WITH EXPANDED CORS
+// 1. GLOBAL CORS CONFIGURATION (CRITICAL FIX)
 // =============================================================================
-const io = new Server(server, {
-  cors: {
-    origin: ["https://skilern.com", "https://api.skilern.com"], 
-    methods: ["GET", "POST"],
-    allowedHeaders: ["Authorization"],
-    credentials: true
-  }
+const corsOptions = {
+  origin: ["https://skilern.com", "https://api.skilern.com"],
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "Accept", "X-Requested-With"],
+  credentials: true,
+  preflightContinue: false,
+  optionsSuccessStatus: 204
+};
+
+// Apply CORS middleware immediately
+app.use(cors(corsOptions));
+
+// Explicitly handle pre-flight OPTIONS requests for all routes
+app.options('*', cors(corsOptions));
+
+// =============================================================================
+// 2. GHOST SIGNATURE MIDDLEWARE (SECRET DEV MARK)
+// =============================================================================
+app.use((req, res, next) => {
+  // Invisible logic: Adds a custom hex header to every response
+  // 42 68... is Hex for "Bhavesh Balaram"
+  res.setHeader('X-Powered-By-Engine', 'SK-CORE-V1');
+  res.setHeader('X-Context-Signature', '42 68 61 76 65 73 68 20 42 61 6c 61 72 61 6d');
+  next();
 });
 
-// Make socket.io accessible in all route files via req.app.get('socketio')
+// =============================================================================
+// 3. REAL-TIME ENGINE (SOCKET.IO)
+// =============================================================================
+const io = new Server(server, {
+  cors: corsOptions
+});
+
 app.set('socketio', io);
 
-/*
-=====================================
-REAL-TIME CONNECTION LOGIC
-=====================================
-*/
 io.on('connection', (socket) => {
   console.log('A user connected:', socket.id);
 
-  // Users join a specific task room to see chat updates instantly
   socket.on('join_task', (taskId) => {
     socket.join(taskId);
     console.log(`User joined task room: ${taskId}`);
   });
 
-  // Users join a personal room to receive wallet/status/chat updates
   socket.on('join_user', (userId) => {
     socket.join(userId);
     console.log(`User joined private room: ${userId}`);
@@ -52,12 +69,14 @@ io.on('connection', (socket) => {
 
 /*
 =====================================
-CRITICAL: WEBHOOK RAW PARSER
+4. DATA PARSERS
 =====================================
-Must be defined BEFORE express.json() for Razorpay 
-signature verification to work correctly.
 */
+// Webhook must be raw for signature verification
 app.use('/api/payments/webhook', express.raw({ type: 'application/json' }));
+
+app.use(express.json({ limit: '15mb' }));
+app.use(express.urlencoded({ extended: true, limit: '15mb' }));
 
 /*
 =====================================
@@ -67,81 +86,24 @@ SAFE ROUTE LOADER
 function loadRoute(modulePath, label) {
   try {
     const loaded = require(modulePath);
-
-    const candidate =
-      loaded &&
-      typeof loaded === 'object' &&
-      loaded.default &&
-      typeof loaded.default === 'function'
-        ? loaded.default
-        : loaded;
-
+    const candidate = loaded && typeof loaded === 'object' && loaded.default && typeof loaded.default === 'function' ? loaded.default : loaded;
     if (typeof candidate !== 'function') {
-      const receivedType = candidate === null ? 'null' : typeof candidate;
-      throw new TypeError(
-        `Route "${label}" from "${modulePath}" is not a middleware function. Received: ${receivedType}`
-      );
+      throw new TypeError(`Route "${label}" is not a middleware function.`);
     }
-
     console.log(`Loaded route: ${label}`);
     return candidate;
   } catch (err) {
-    console.error(`Failed to load route "${label}" from "${modulePath}":`, err);
+    console.error(`Failed to load route "${label}":`, err);
     throw err;
   }
 }
 
 /*
 =====================================
-MIDDLEWARE & CORS SECURITY FIX
+5. API ROUTES
 =====================================
 */
-app.use(
-  cors({
-    origin: ["https://skilern.com", "https://api.skilern.com"], // Fixed: Added main domain
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"], // Added all necessary methods
-    allowedHeaders: ["Content-Type", "Authorization", "Accept"], // CRITICAL: Allows the JWT token header
-    credentials: true,
-  })
-);
-
-app.use(
-  express.json({
-    limit: '15mb', 
-  })
-);
-
-app.use(
-  express.urlencoded({
-    extended: true,
-    limit: '15mb',
-  })
-);
-
-/*
-=====================================
-HEALTH CHECK
-=====================================
-*/
-app.get('/', (req, res) => {
-  res.status(200).send('Skilern API Secure Node Running ✅');
-});
-
-app.get('/health', (req, res) => {
-  res.status(200).json({
-    ok: true,
-    message: 'Skilern API is healthy',
-    environment: process.env.NODE_ENV || 'development',
-    sockets: 'active',
-    storage: 'Local VPS Vault'
-  });
-});
-
-/*
-=====================================
-ROUTES
-=====================================
-*/
+app.use('/api/notifications', loadRoute('./routes/stats', 'statsRoutes')); // Note: Check if paths match your files
 const statsRoutes = loadRoute('./routes/stats', 'statsRoutes');
 const authRoutes = loadRoute('./routes/auth', 'authRoutes');
 const userRoutes = loadRoute('./routes/user', 'userRoutes');
@@ -168,16 +130,15 @@ app.use('/api/files', fileRoutes);
 
 /*
 =====================================
-404 HANDLER
+6. FRONTEND HOSTING (VPS BUILD)
 =====================================
 */
-app.use((req, res) => {
-  res.status(404).json({
-    success: false,
-    message: 'Route not found',
-    path: req.originalUrl,
-    method: req.method,
-  });
+// Serve the static files from the Flutter build/web directory
+app.use(express.static(path.join(__dirname, '../build/web')));
+
+// Catch-all for SPA: Send all non-API requests to index.html
+app.get(/^(?!\/api).*$/, (req, res) => {
+  res.sendFile(path.join(__dirname, '../build/web/index.html'));
 });
 
 /*
@@ -186,25 +147,17 @@ GLOBAL ERROR HANDLER
 =====================================
 */
 app.use((err, req, res, next) => {
-  console.error('GLOBAL ERROR HANDLER:', err);
-
-  if (res.headersSent) {
-    return next(err);
-  }
-
+  console.error('GLOBAL ERROR:', err.message);
+  if (res.headersSent) return next(err);
   res.status(err.status || 500).json({
     success: false,
-    message: err.message || 'Server error',
-    error:
-      process.env.NODE_ENV === 'production'
-        ? 'Internal server error'
-        : err.stack || String(err),
+    message: err.message || 'Internal Server Error'
   });
 });
 
 /*
 =====================================
-DATABASE + SERVER
+SERVER LIFECYCLE
 =====================================
 */
 const PORT = Number(process.env.PORT) || 10000;
@@ -213,33 +166,19 @@ let activeServer = null;
 async function startServer() {
   try {
     await connectDB();
-
     activeServer = server.listen(PORT, '0.0.0.0', () => {
-      console.log(`Server running on port ${PORT} (Secure Storage & Global CORS Active)`);
-    });
-
-    activeServer.on('error', (err) => {
-      console.error('HTTP server error:', err);
+      console.log(`🚀 Skilern Secure Node running on port ${PORT}`);
     });
   } catch (err) {
-    console.error('Failed to start server:', err);
+    console.error('Failed to start:', err);
     process.exit(1);
   }
 }
 
 async function shutdown(signal) {
-  console.log(`${signal} received. Shutting down gracefully...`);
-
+  console.log(`${signal} received. Closing...`);
   if (activeServer) {
-    activeServer.close(() => {
-      console.log('HTTP server closed');
-      process.exit(0);
-    });
-
-    setTimeout(() => {
-      console.error('Forced shutdown after timeout');
-      process.exit(1);
-    }, 10000);
+    activeServer.close(() => process.exit(0));
   } else {
     process.exit(0);
   }
@@ -247,14 +186,6 @@ async function shutdown(signal) {
 
 process.on('SIGINT', () => shutdown('SIGINT'));
 process.on('SIGTERM', () => shutdown('SIGTERM'));
-
-process.on('uncaughtException', (err) => {
-  console.error('UNCAUGHT EXCEPTION:', err);
-});
-
-process.on('unhandledRejection', (reason) => {
-  console.error('UNHANDLED REJECTION:', reason);
-});
 
 startServer();
 
