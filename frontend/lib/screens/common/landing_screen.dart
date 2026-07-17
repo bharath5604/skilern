@@ -314,7 +314,7 @@ class _LandingScreenState extends State<LandingScreen>
     return Container(
       width: double.infinity, padding: const EdgeInsets.symmetric(vertical: 48, horizontal: 24), color: deepBg,
       child: Column(children: [
-        const Text("SKILERN by KRR Innovations", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 18, letterSpacing: 0.5)),
+        const Text("SKILERN by KRR Innovations Pvt Ltd", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 18, letterSpacing: 0.5)),
         const SizedBox(height: 8),
         const Text("Managed student marketplace connecting businesses with university expertise.", textAlign: TextAlign.center, style: TextStyle(color: Colors.white54, fontSize: 13, height: 1.4)),
         const SizedBox(height: 32),
@@ -327,7 +327,7 @@ class _LandingScreenState extends State<LandingScreen>
         const SizedBox(height: 40),
         const Divider(color: Colors.white10, thickness: 1),
         const SizedBox(height: 24),
-        const Text("© 2024 KRR Innovations. All rights reserved.", style: TextStyle(color: Colors.white30, fontSize: 11)),
+        const Text("© 2024 KRR Innovations Pvt Ltd. All rights reserved.", style: TextStyle(color: Colors.white30, fontSize: 11)),
         const Text("Registered Address: Vijayawada, Andhra Pradesh, India", textAlign: TextAlign.center, style: TextStyle(color: Colors.white24, fontSize: 10, height: 1.6)),
       ]),
     );
