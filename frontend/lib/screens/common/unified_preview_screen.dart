@@ -111,14 +111,11 @@ class _UnifiedPreviewScreenState extends State<UnifiedPreviewScreen> {
       if (_isPdf && bytes.isNotEmpty) {
         final header = String.fromCharCodes(bytes.take(4));
         if (header != "%PDF") {
-           // If it's not a PDF header, it's likely error text
-           try {
-             final bodyText = utf8.decode(bytes);
-             if (bodyText.contains("message")) {
-               throw Exception(jsonDecode(bodyText)['message'] ?? "Access Denied");
-             }
-           } catch (_) {}
-           throw Exception("The file data is invalid or was blocked by the server.");
+           final bodyText = utf8.decode(bytes, allowMalformed: true);
+           if (bodyText.contains("message")) {
+             throw Exception(jsonDecode(bodyText)['message'] ?? "Access Denied");
+           }
+           throw Exception("Invalid file data received from secure vault.");
         }
       }
       
@@ -128,7 +125,7 @@ class _UnifiedPreviewScreenState extends State<UnifiedPreviewScreen> {
         });
       }
     } else {
-      throw Exception("Access Denied from Vault (${response.statusCode})");
+      throw Exception("VPS Access Denied (${response.statusCode})");
     }
   }
 
@@ -156,7 +153,7 @@ class _UnifiedPreviewScreenState extends State<UnifiedPreviewScreen> {
         });
       }
     } catch (e) {
-      throw Exception("Secure video stream failed. Check VPS permissions.");
+      throw Exception("Secure video stream failed. Check permissions.");
     }
   }
 
@@ -174,15 +171,15 @@ class _UnifiedPreviewScreenState extends State<UnifiedPreviewScreen> {
           final blob = html.Blob([response.bodyBytes], 'application/octet-stream');
           final url = html.Url.createObjectUrlFromBlob(blob);
           final anchor = html.AnchorElement(href: url)
-            ..setAttribute("download", widget.title) // Ensures correct extension
+            ..setAttribute("download", widget.title) // Correct filename preservation
             ..click();
           html.Url.revokeObjectUrl(url);
-          _showSnack("Download successful: ${widget.title}");
+          _showSnack("Saved successfully: ${widget.title}");
         } else {
           _showSnack("File retrieved from secure storage.");
         }
       } else {
-        throw Exception("Server rejected secure download request.");
+        throw Exception("Server rejected secure download.");
       }
     } catch (e) {
       _showSnack("Download failed: $e");
@@ -212,7 +209,6 @@ class _UnifiedPreviewScreenState extends State<UnifiedPreviewScreen> {
         leading: IconButton(icon: const Icon(Icons.close_rounded, color: Colors.black87), onPressed: () => Navigator.pop(context)),
         title: Text(widget.title, style: const TextStyle(color: Colors.black87, fontSize: 13, fontWeight: FontWeight.bold)),
         actions: [
-          // Quality check icon for Admin, or download icon for unlocked files
           if (isAdmin || _isUnsupportedPreview)
             IconButton(
               icon: _isDownloading 
@@ -270,16 +266,16 @@ class _UnifiedPreviewScreenState extends State<UnifiedPreviewScreen> {
     }
 
     // ============================================================
-    // FIXED PDF VIEWER: Using Forced Refresh Key + Memory Check
+    // FIXED PDF VIEWER: Using Key + Memory Check + Header Verification
     // ============================================================
     if (_isPdf && _fileBytes != null && _fileBytes!.isNotEmpty) {
       return Container(
         color: Colors.white,
         child: SfPdfViewer.memory(
           _fileBytes!,
-          key: ValueKey(widget.url + (_fileBytes?.length.toString() ?? '0')), 
+          key: ValueKey(widget.url + _fileBytes!.length.toString()), // Force Refresh
           onDocumentLoadFailed: (details) {
-            if(mounted) setState(() => _errorMessage = "PDF Rendering Failed: ${details.description}");
+            if(mounted) setState(() => _errorMessage = "Renderer Error: ${details.description}");
           },
         ),
       ); 
@@ -289,7 +285,7 @@ class _UnifiedPreviewScreenState extends State<UnifiedPreviewScreen> {
       if (_chewieController != null && _chewieController!.videoPlayerController.value.isInitialized) {
         return Center(child: Chewie(controller: _chewieController!));
       }
-      return const Center(child: Text("Preparing secure stream...", style: TextStyle(color: Colors.white)));
+      return const Center(child: Text("Initializing secure stream...", style: TextStyle(color: Colors.white)));
     }
 
     if (_fileBytes != null) {
@@ -311,10 +307,7 @@ class _UnifiedPreviewScreenState extends State<UnifiedPreviewScreen> {
         children: [
           const Icon(Icons.lock_clock_rounded, size: 60, color: Colors.redAccent),
           const SizedBox(height: 16),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 32),
-            child: Text(msg, textAlign: TextAlign.center, style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
-          ),
+          Text(msg, textAlign: TextAlign.center, style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
           const SizedBox(height: 24),
           ElevatedButton(onPressed: () => Navigator.pop(context), child: const Text("Go Back"))
         ],
