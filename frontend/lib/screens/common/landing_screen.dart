@@ -390,7 +390,7 @@ class _LandingScreenState extends State<LandingScreen>
                               const SizedBox(height: 20),
                               _InteractiveWorkflowSection(isDesktop: isDesktop),
                               const SizedBox(height: 60),
-                              _AnimatedBottomCTA(glowAnim: _glowAnimation, bounceAnim: _bounceAnimation, onTap: _showGuestTaskSheet),
+                              // _AnimatedBottomCTA(glowAnim: _glowAnimation, bounceAnim: _bounceAnimation, onTap: _showGuestTaskSheet),
                               const SizedBox(height: 48),
                               _SectionTitle(title: 'Contact Us'),
                               const SizedBox(height: 20),
@@ -464,7 +464,7 @@ class _InteractiveWorkflowSection extends StatefulWidget {
 class _InteractiveWorkflowSectionState extends State<_InteractiveWorkflowSection> {
   int _activeStep = 0;
   static const List<Map<String, dynamic>> _steps = [
-    {'icon': Icons.edit_note_rounded, 'title': 'Post Request', 'desc': 'Step 1', 'detail': 'Ask for help. Clients post what they need. Use "Emergency Work" to submit without an account.', 'color': Color(0xFF6A11CB), 'bgColor': Color(0xFFF3E8FF), 'step': '01'},
+    {'icon': Icons.edit_note_rounded, 'title': 'Post Request', 'desc': 'Step 1', 'detail': 'Ask for help. Clients post what they need.', 'color': Color(0xFF6A11CB), 'bgColor': Color(0xFFF3E8FF), 'step': '01'},
     {'icon': Icons.person_search_rounded, 'title': 'Admin Match', 'desc': 'Step 2', 'detail': 'The Matchmaker. Admins review and assign a Student with the right skills to get it done well.', 'color': Color(0xFF2575FC), 'bgColor': Color(0xFFEFF6FF), 'step': '02'},
     {'icon': Icons.task_alt_rounded, 'title': 'Approve Work', 'desc': 'Step 3', 'detail': 'Preview and Pay. Client previews work first. If satisfied, they approve and make payment.', 'color': Color(0xFF059669), 'bgColor': Color(0xFFECFDF5), 'step': '03'},
     {'icon': Icons.qr_code_2_rounded, 'title': 'Payout', 'desc': 'Step 4', 'detail': 'Delivery and Payday. Client downloads unwatermarked files; Student receives agreed-upon payment.', 'color': Color(0xFFD97706), 'bgColor': Color(0xFFFFFBEB), 'step': '04'},
@@ -544,77 +544,69 @@ class _AnimatedAppBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       margin: const EdgeInsets.all(12),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05), 
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          )
         ],
       ),
       child: Row(
         children: [
           // ============================================================
-          // ADDED: APP LOGO
+          // LOGO FIX: Using horizontal scaling for the full logo
           // ============================================================
-          ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: Image.asset(
-              'assets/images/app_icon.png',
-              height: 32,
-              width: 32,
-              fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) => const Icon(
-                Icons.auto_awesome,
-                color: Color(0xFF6A11CB),
-                size: 24,
-              ),
+          Image.asset(
+            'assets/images/app_icon.png',
+            height: 48, // Increased height for readability
+            // We removed the Width constraint so the logo can expand horizontally
+            fit: BoxFit.contain,
+            filterQuality: FilterQuality.high,
+            errorBuilder: (context, error, stackTrace) => const Icon(
+              Icons.auto_awesome,
+              color: Color(0xFF6A11CB),
+              size: 28,
             ),
           ),
-          const SizedBox(width: 10),
+          // We removed the RichText "SKILERN" because it is inside your logo image
           // ============================================================
-          RichText(
-            text: const TextSpan(
-              children: [
-                TextSpan(
-                  text: 'SKI',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w900,
-                    color: Color(0xFF6A11CB),
-                  ),
-                ),
-                TextSpan(
-                  text: 'LERN',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w900,
-                    color: Color(0xFF2575FC),
-                  ),
-                ),
-              ],
-            ),
-          ),
+          
           const Spacer(),
-          TextButton(
-            onPressed: onEmergencyPost,
-            child: const Text(
-              'Emergency Post',
-              style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
-            ),
-          ),
-          const SizedBox(width: 8),
+          
+          // TextButton(
+          //   onPressed: onEmergencyPost,
+          //   child: const Text(
+          //     'Emergency Post',
+          //     style: TextStyle(
+          //       color: Colors.red, 
+          //       fontWeight: FontWeight.bold,
+          //       fontSize: 12,
+          //     ),
+          //   ),
+          // ),
+          const SizedBox(width: 4),
           ElevatedButton(
             onPressed: () => Navigator.pushNamed(context, '/login'),
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF6A11CB),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
+              elevation: 0,
             ),
             child: const Text(
               'Sign In',
-              style: TextStyle(color: Colors.white),
+              style: TextStyle(
+                color: Colors.white, 
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+              ),
             ),
           ),
         ],
@@ -644,11 +636,11 @@ class _ContactActionCard extends StatelessWidget {
   @override Widget build(BuildContext context) { return InkWell(onTap: onTap, child: Container(padding: const EdgeInsets.all(14), decoration: BoxDecoration(color: Colors.grey[50], borderRadius: BorderRadius.circular(16)), child: Row(children: [Icon(icon, color: const Color(0xFF6A11CB)), const SizedBox(width: 14), Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: const TextStyle(fontWeight: FontWeight.w700)), Text(subtitle, style: const TextStyle(fontSize: 12, color: Colors.grey))])]))); }
 }
 
-class _AnimatedBottomCTA extends StatelessWidget {
-  final Animation<double> glowAnim, bounceAnim; final VoidCallback onTap;
-  const _AnimatedBottomCTA({required this.glowAnim, required this.bounceAnim, required this.onTap});
-  @override Widget build(BuildContext context) { return AnimatedBuilder(animation: glowAnim, builder: (context, child) => Container(decoration: BoxDecoration(shape: BoxShape.circle, boxShadow: [BoxShadow(color: const Color(0xFF6A11CB).withOpacity(0.3 * glowAnim.value), blurRadius: 40 * glowAnim.value)]), child: Center(child: ScaleTransition(scale: bounceAnim, child: ElevatedButton.icon(onPressed: onTap, icon: const Icon(Icons.bolt, color: Colors.white), label: const Text("Submit Emergency Task", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)), style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6A11CB), padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 18), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(40)))))))); }
-}
+// class _AnimatedBottomCTA extends StatelessWidget {
+//   final Animation<double> glowAnim, bounceAnim; final VoidCallback onTap;
+//   const _AnimatedBottomCTA({required this.glowAnim, required this.bounceAnim, required this.onTap});
+//   @override Widget build(BuildContext context) { return AnimatedBuilder(animation: glowAnim, builder: (context, child) => Container(decoration: BoxDecoration(shape: BoxShape.circle, boxShadow: [BoxShadow(color: const Color(0xFF6A11CB).withOpacity(0.3 * glowAnim.value), blurRadius: 40 * glowAnim.value)]), child: Center(child: ScaleTransition(scale: bounceAnim, child: ElevatedButton.icon(onPressed: onTap, icon: const Icon(Icons.bolt, color: Colors.white), label: const Text("Submit Emergency Task", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)), style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF6A11CB), padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 18), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(40)))))))); }
+// }
 
 class _SectionTitle extends StatelessWidget {
   final String title; const _SectionTitle({required this.title});
@@ -662,7 +654,6 @@ class _SectionTitle extends StatelessWidget {
 const String _privacyContent = """
 1. What We Collect
 - When you sign up: Name, email, phone number, and skills.
-- When you use "Emergency Work": Email or phone number for delivery.
 - When you pay or get paid: Necessary billing and payment details.
 
 2. Why We Need It
@@ -684,7 +675,7 @@ const String _termsContent = """
 - Admins: Match Clients with the perfect Student and ensure safety.
 
 2. How Skilern Works (Step-by-Step)
-Step 1: Ask for help (including Emergency Work).
+Step 1: Ask for help..
 Step 2: The Matchmaker assignments.
 Step 3: The Preview (See exactly what you pay for).
 Step 4: Approval and Payment to Skilern.
@@ -717,7 +708,7 @@ Clients only pay after reviewing the preview. If not satisfied, reject or ask fo
 3. What Doesn't Qualify
 - Changing your mind after approval and download.
 - Deciding you don't like the work after approval.
-- Emergency Tasks once approved.
+
 
 4. How to Fix a Glitch
 Contact support with your Task ID. Verification leads to a refund within 7 to 10 business days.
