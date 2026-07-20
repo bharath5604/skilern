@@ -76,16 +76,24 @@ router.get('/filters', verifyJWT, async (req, res) => {
 /**
  * Returns tasks actively assigned to the logged-in student
  */
+// backend/routes/tasks.js -> find the GET /assigned route
+
 router.get('/assigned', verifyJWT, async (req, res) => {
   try {
     const tasks = await Task.find({
       student: req.user.id,
       status: { $in: ['assigned', 'under_review', 'completed', 'declined'] },
-    }).populate('client', 'name company location').sort({ updatedAt: -1 });
+    })
+    .populate('client', 'name company location')
+    // ENSURE THESE ARE INCLUDED:
+    .select('+attachments +attachmentNames') 
+    .sort({ updatedAt: -1 });
+    
     res.json(tasks);
-  } catch (err) { res.status(500).json({ message: 'Error loading workspace' }); }
+  } catch (err) { 
+      res.status(500).json({ message: 'Error loading workspace' }); 
+  }
 });
-
 /**
  * Returns task invitations (Pending Acceptance)
  */
