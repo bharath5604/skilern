@@ -57,7 +57,6 @@ const submissionSchema = new Schema(
       maxlength: [2000, 'Submission notes cannot exceed 2000 characters'],
     },
     
-    // Approved by Client (This triggers the final status)
     approved: {
       type: Boolean,
       default: false,
@@ -96,6 +95,21 @@ const taskSchema = new Schema(
       maxlength: [5000, 'Task description cannot exceed 5000 characters'],
     },
 
+    // ============================================================
+    // CRITICAL FIX: CLIENT ATTACHMENTS (PROJECT BRIEF)
+    // These fields allow the database to store files given by 
+    // the client during the creation/posting phase.
+    // ============================================================
+    attachments: {
+      type: [String],
+      default: [],
+    },
+    attachmentNames: {
+      type: [String],
+      default: [],
+    },
+    // ============================================================
+
     /**
      * Client Logic: Registered vs Guest (Emergency Task)
      */
@@ -104,7 +118,6 @@ const taskSchema = new Schema(
       default: false,
     },
 
-    // Optional for Guest Tasks; Required for Registered Tasks
     client: {
       type: Schema.Types.ObjectId,
       ref: 'User',
@@ -112,7 +125,6 @@ const taskSchema = new Schema(
       index: true,
     },
 
-    // Stores contact details for Guest/Emergency clients
     guestInfo: {
       name: { type: String, trim: true },
       mobile: { type: String, trim: true },
@@ -137,24 +149,20 @@ const taskSchema = new Schema(
     },
 
     /**
-     * REQUIREMENT: Gated Access Control
+     * Gated Access Control
      */
-    
-    // Defaulted to true: Client can see that work was submitted immediately
     clientCanViewSubmission: {
       type: Boolean,
       default: true,
     },
 
-    // Defaulted to false: Client cannot download/save the file until Admin allows it
     clientCanDownload: { 
       type: Boolean, 
       default: false 
     },
 
     /**
-     * Requirement: Manual Payment Chain Tracking
-     * (Client -> Admin -> Student)
+     * Manual Payment Chain Tracking
      */
     adminReceivedPayment: {
       type: Boolean,
@@ -166,7 +174,6 @@ const taskSchema = new Schema(
       default: false,
     },
 
-    // If true, Client UI shows Razorpay. If false, shows Static QR.
     budgetFinalized: {
       type: Boolean,
       default: false
@@ -251,7 +258,6 @@ const taskSchema = new Schema(
       default: null,
     },
 
-    // Stores the reason/notes provided when a client requests modification.
     modificationNotes: {
       type: String,
       default: '',
