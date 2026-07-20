@@ -14,8 +14,8 @@ function normalizeStringArray(value) {
 
 /**
  * Submission Sub Schema
- * Tracks multiple pieces of work uploaded by the student.
- * MODIFIED: Supports multiple files and different file types.
+ * Tracks the work uploaded by the student.
+ * MODIFIED: Supports multiple deliverables and varied file types.
  */
 const submissionSchema = new Schema(
   {
@@ -27,7 +27,6 @@ const submissionSchema = new Schema(
     
     // ============================================================
     // MODIFICATION: MULTI-FILE SUPPORT
-    // Replaced single fileUrl with an array of objects
     // ============================================================
     files: [
       {
@@ -43,6 +42,13 @@ const submissionSchema = new Schema(
         }
       }
     ],
+
+    // BACKWARDS COMPATIBILITY: Keeps old single-file tasks working
+    fileUrl: {
+      type: String,
+      required: false,
+      trim: true
+    },
 
     notes: {
       type: String,

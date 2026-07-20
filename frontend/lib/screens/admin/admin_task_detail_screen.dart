@@ -175,7 +175,7 @@ class _AdminTaskDetailScreenState extends State<AdminTaskDetailScreen> {
     setState(() => finalizingBudget = true);
     try {
       await paymentService.finalizeTaskBudget(taskId: _taskId(), amount: val);
-      _showSnackBar("Budget final. Client can now pay via Razorpay.");
+      _showSnackBar("Budget final. Client can now pay.");
       await _reloadTaskData();
     } catch (e) { _showSnackBar("Finalization failed"); }
     finally { setState(() => finalizingBudget = false); }
@@ -186,7 +186,7 @@ class _AdminTaskDetailScreenState extends State<AdminTaskDetailScreen> {
     try {
       await adminService.confirmClientPayment(_taskId());
       await _reloadTaskData();
-      _showSnackBar("Client payment confirmed and files unlocked.");
+      _showSnackBar("Payment confirmed and files unlocked.");
     } catch (e) { _showSnackBar("Update failed"); }
     finally { setState(() => processingPayment = false); }
   }
@@ -353,7 +353,7 @@ class _AdminTaskDetailScreenState extends State<AdminTaskDetailScreen> {
               )
             ],
           ),
-          if (isFinalized) const Padding(padding: EdgeInsets.only(top: 8), child: Text("Budget is locked. Client can now pay via Razorpay.", style: TextStyle(fontSize: 10, fontStyle: FontStyle.italic, color: Colors.grey))),
+          if (isFinalized) const Padding(padding: EdgeInsets.only(top: 8), child: Text("Budget is locked. Client can now pay.", style: TextStyle(fontSize: 10, fontStyle: FontStyle.italic, color: Colors.grey))),
         ],
       ),
     );
@@ -392,8 +392,50 @@ class _AdminTaskDetailScreenState extends State<AdminTaskDetailScreen> {
   }
 
   // ============================================================
-  // UI: QUALITY CHECK SECTION (FIXED VISIBILITY)
-  // Handles new List format AND legacy String format.
+  // UI: CLIENT ATTACHMENTS (PROJECT BRIEF)
+  // ============================================================
+  Widget _buildClientAttachmentsSection() {
+    final List attachments = _taskData['attachments'] as List? ?? [];
+    final List names = _taskData['attachmentNames'] as List? ?? [];
+    
+    if (attachments.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      margin: const EdgeInsets.only(top: 16),
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(color: Colors.blue.withOpacity(0.05), borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.blue.withOpacity(0.1))),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text("CLIENT PROJECT ASSETS", style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: Colors.blueGrey)),
+          const SizedBox(height: 12),
+          ...List.generate(attachments.length, (index) {
+            final String url = attachments[index].toString();
+            final String name = names.length > index ? names[index].toString() : "Project File ${index + 1}";
+            
+            return Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
+              child: ListTile(
+                dense: true,
+                leading: const Icon(Icons.description_outlined, color: Colors.blue),
+                title: Text(name, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                trailing: const Icon(Icons.remove_red_eye_outlined, size: 18, color: Colors.grey),
+                onTap: () {
+                  Navigator.push(context, MaterialPageRoute(
+                    builder: (_) => UnifiedPreviewScreen(url: url, title: "Brief: $name")
+                  ));
+                },
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // UI: QUALITY CHECK SECTION (HANDLES LIST AND LEGACY)
   // ============================================================
   Widget _buildSubmissionSection() {
     final submission = _safeMap(_taskData['submission']);
@@ -402,32 +444,18 @@ class _AdminTaskDetailScreenState extends State<AdminTaskDetailScreen> {
     final List files = submission['files'] is List ? submission['files'] : [];
     final String? legacyUrl = submission['fileUrl']?.toString();
 
-    // If both are empty, there is nothing to show
-    if (files.isEmpty && (legacyUrl == null || legacyUrl.isEmpty)) {
-      return const SizedBox.shrink();
-    }
+    if (files.isEmpty && (legacyUrl == null || legacyUrl.isEmpty)) return const SizedBox.shrink();
 
     return Container(
       margin: const EdgeInsets.only(top: 16),
       padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: const Color(0xFFE8F5E9), 
-        borderRadius: BorderRadius.circular(20), 
-        border: Border.all(color: Colors.green.shade200)
-      ),
+      decoration: BoxDecoration(color: const Color(0xFFE8F5E9), borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.green.shade200)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
-            children: [
-              Icon(Icons.fact_check_rounded, color: Colors.green, size: 20),
-              SizedBox(width: 8),
-              Text('ADMIN QUALITY CHECK: STUDENT WORK', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 11, color: Colors.green)),
-            ],
-          ),
-          const SizedBox(height: 14),
+          const Text('ADMIN QUALITY CHECK: STUDENT WORK', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 10, color: Colors.green)),
+          const SizedBox(height: 12),
           
-          // 1. Render Multi-File format
           if (files.isNotEmpty)
             ...files.map((file) {
               final String fUrl = file['url']?.toString() ?? '';
@@ -435,9 +463,8 @@ class _AdminTaskDetailScreenState extends State<AdminTaskDetailScreen> {
               return _fileQualityCheckTile(fName, fUrl);
             }).toList(),
 
-          // 2. Fallback for old tasks (Legacy Single File)
           if (files.isEmpty && legacyUrl != null && legacyUrl.isNotEmpty)
-            _fileQualityCheckTile("Work Deliverable (Single File)", legacyUrl),
+            _fileQualityCheckTile("Work Deliverable (Legacy Single File)", legacyUrl),
 
           if (submission['notes'] != null && submission['notes'].toString().isNotEmpty) ...[
             const SizedBox(height: 12),
@@ -458,18 +485,10 @@ class _AdminTaskDetailScreenState extends State<AdminTaskDetailScreen> {
         dense: true,
         leading: const Icon(Icons.insert_drive_file_outlined, color: Colors.green),
         title: Text(name, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-        subtitle: const Text("Tap to verify or download", style: TextStyle(fontSize: 10, color: Colors.grey)),
+        subtitle: const Text("Tap to review or download", style: TextStyle(fontSize: 10, color: Colors.grey)),
         trailing: const Icon(Icons.remove_red_eye_outlined, color: Colors.blue, size: 18),
         onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => UnifiedPreviewScreen(
-                url: url, 
-                title: "Quality Check: $name"
-              ),
-            ),
-          );
+          Navigator.push(context, MaterialPageRoute(builder: (_) => UnifiedPreviewScreen(url: url, title: "Review: $name")));
         },
       ),
     );
@@ -581,7 +600,6 @@ class _AdminTaskDetailScreenState extends State<AdminTaskDetailScreen> {
     final guest = _safeMap(task['guestInfo']);
     final client = _safeMap(task['client']);
     final requiredSkills = _safeStringList(task['requiredSkills']);
-
     final clientName = isGuest ? _safeString(guest['name']) : _safeString(client['name']);
     final clientMobile = isGuest ? _safeString(guest['mobile']) : _safeString(client['mobile']);
 
@@ -600,15 +618,16 @@ class _AdminTaskDetailScreenState extends State<AdminTaskDetailScreen> {
                 if (isGuest) Container(margin: const EdgeInsets.only(bottom: 8), padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: Colors.orange, borderRadius: BorderRadius.circular(8)), child: const Text("EMERGENCY TASK", style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold))),
                 Text(_safeString(task['title']), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
                 const Divider(height: 20),
-                Row(children: [Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text("Client: $clientName", style: const TextStyle(fontWeight: FontWeight.bold)), Text("Mob: $clientMobile", style: const TextStyle(fontSize: 12, color: Colors.grey))])), IconButton(icon: const Icon(Icons.call, color: Colors.green), onPressed: () => _makeCall(clientMobile)), IconButton(icon: const Icon(Icons.chat_outlined, color: _primaryRed), onPressed: () => Navigator.pushNamed(context, '/taskChat', arguments: {'taskId': _taskId(), 'taskTitle': task['title'], 'peerStudentId': null}))]),
+                Row(children: [Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text("Client: $clientName", style: const TextStyle(fontWeight: FontWeight.bold)), Text("Mob: $clientMobile", style: const TextStyle(fontSize: 12, color: Colors.grey))])), IconButton(icon: const Icon(Icons.call, color: Colors.green), onPressed: () => _makeCall(clientMobile)), IconButton(icon: const Icon(Icons.chat_outlined, color: _primaryRed), onPressed: () => _openChat(null))]),
               ],
             ),
           ),
           
-          _buildSubmissionSection(), // <--- THE UPDATED QUALITY CHECK ZONE
-          
+          _buildClientAttachmentsSection(), // CLIENT FILES
+          _buildSubmissionSection(),        // STUDENT FILES
           _buildBudgetFinalizer(), 
           _buildAdminPaymentControl(),
+          
           const SizedBox(height: 16),
           Container(
             padding: const EdgeInsets.all(18),
@@ -618,7 +637,7 @@ class _AdminTaskDetailScreenState extends State<AdminTaskDetailScreen> {
               children: [
                 const Text("REQUIRED SKILLS", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.grey)),
                 const SizedBox(height: 10),
-                requiredSkills.isEmpty ? const Text("None specified", style: TextStyle(fontSize: 12)) : Wrap(spacing: 8, children: requiredSkills.map((s) => Chip(backgroundColor: _primaryRed.withOpacity(0.05), label: Text(s, style: const TextStyle(fontSize: 11, color: _primaryRed)))).toList()),
+                Wrap(spacing: 8, children: requiredSkills.map((s) => Chip(backgroundColor: _primaryRed.withOpacity(0.05), label: Text(s, style: const TextStyle(fontSize: 11, color: _primaryRed)))).toList()),
                 const Divider(height: 24),
                 const Text("DESCRIPTION", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.grey)),
                 const SizedBox(height: 8),

@@ -393,9 +393,18 @@ exports.getTaskById = async (req, res) => {
     const task = await Task.findById(req.params.taskId)
       .populate("client", "name mobile company guestInfo email")
       .populate("student", "name mobile email skills tasksCompleted totalScore totalScoreCount bankAccountHolderName bankAccountNumber ifscCode idCardUrl bio")
-      .populate("requestedStudent");
+      .populate("requestedStudent")
+      // ============================================================
+      // FIX: EXPLICITLY SELECT ATTACHMENTS
+      // ============================================================
+      .select('+attachments +attachmentNames'); 
+
+    if (!task) return res.status(404).json({ message: "Task not found" });
+    
     return res.json(task);
-  } catch (error) { return sendServerError(res, error, "Error"); }
+  } catch (error) { 
+      return res.status(500).json({ message: "Error retrieving task details" }); 
+  }
 };
 
 exports.getStudentDetails = async (req, res) => {

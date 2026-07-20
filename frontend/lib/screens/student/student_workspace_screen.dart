@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io' show File;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
@@ -10,7 +9,7 @@ import '../../services/auth_service.dart';
 import '../../services/socketservice.dart'; 
 import '../../services/file_service.dart'; 
 import '../../models/task.dart';
-import '../common/unified_preview_screen.dart'; // IMPORTED
+import '../common/unified_preview_screen.dart'; 
 import 'student_main_shell.dart';
 
 class StudentWorkspaceScreen extends StatefulWidget {
@@ -57,7 +56,6 @@ class _StudentWorkspaceScreenState extends State<StudentWorkspaceScreen>
     SocketService.on('task_request', (_) => _loadAllData(isSilent: true));
     SocketService.on('task_update', (_) => _loadAllData(isSilent: true));
     SocketService.on('task_assigned', (_) => _loadAllData(isSilent: true));
-    SocketService.on('task_status_changed', (_) => _loadAllData(isSilent: true));
   }
 
   @override
@@ -65,7 +63,6 @@ class _StudentWorkspaceScreenState extends State<StudentWorkspaceScreen>
     SocketService.off('task_request');
     SocketService.off('task_update');
     SocketService.off('task_assigned');
-    SocketService.off('task_status_changed');
     _animationController.dispose();
     super.dispose();
   }
@@ -93,7 +90,7 @@ class _StudentWorkspaceScreenState extends State<StudentWorkspaceScreen>
       _animationController.forward(from: 0);
     } catch (e) {
       if (!mounted) return;
-      _showSnackBar('Failed to sync: $e');
+      _showSnackBar('Failed to sync workspace');
     } finally {
       if (mounted && !isSilent) setState(() => _loading = false);
     }
@@ -111,15 +108,10 @@ class _StudentWorkspaceScreenState extends State<StudentWorkspaceScreen>
       backgroundColor: backgroundColor,
       appBar: AppBar(
         automaticallyImplyLeading: false,
-        elevation: 0,
+        elevation: 0.5,
         backgroundColor: Colors.white,
-        title: ShaderMask(
-          shaderCallback: (bounds) => const LinearGradient(
-            colors: [primaryPurple, secondaryPurple],
-          ).createShader(bounds),
-          child: const Text('My Workspace',
-              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 20, color: Colors.white)),
-        ),
+        title: const Text('My Workspace',
+              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: textDark)),
       ),
       body: RefreshIndicator(
         onRefresh: () => _loadAllData(isSilent: false),
@@ -138,7 +130,7 @@ class _StudentWorkspaceScreenState extends State<StudentWorkspaceScreen>
                       ..._invitations.map((t) => _InvitationCard(task: t, onAction: _loadAllData)),
                       const SizedBox(height: 24),
                     ],
-                    _buildSectionHeader('Active & Closed Assignments', _tasks.length, primaryPurple),
+                    _buildSectionHeader('Active Assignments', _tasks.length, primaryPurple),
                     const SizedBox(height: 10),
                     if (_tasks.isEmpty)
                       _buildEmptyState()
@@ -157,13 +149,9 @@ class _StudentWorkspaceScreenState extends State<StudentWorkspaceScreen>
       children: [
         Container(width: 4, height: 18, decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(2))),
         const SizedBox(width: 10),
-        Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: textDark)),
+        Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: textDark)),
         const Spacer(),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-          decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
-          child: Text('$count', style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.bold)),
-        ),
+        Text('$count', style: TextStyle(fontSize: 12, color: color, fontWeight: FontWeight.bold)),
       ],
     );
   }
@@ -172,22 +160,11 @@ class _StudentWorkspaceScreenState extends State<StudentWorkspaceScreen>
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(40),
-      margin: const EdgeInsets.only(top: 10),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: Colors.grey.shade100)),
-      child: const Column(
-        children: [
-          Icon(Icons.assignment_late_outlined, size: 48, color: Color(0xFFE2E8F0)),
-          SizedBox(height: 16),
-          Text('No active assignments', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
-        ],
-      ),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
+      child: const Center(child: Text('No active projects', style: TextStyle(color: Colors.grey))),
     );
   }
 }
-
-// ---------------------------------------------------------------------------
-// INVITATION CARD
-// ---------------------------------------------------------------------------
 
 class _InvitationCard extends StatefulWidget {
   final Task task;
@@ -201,110 +178,43 @@ class _InvitationCard extends StatefulWidget {
 class _InvitationCardState extends State<_InvitationCard> {
   bool _busy = false;
 
-  String _formatCurrency(double? val) => val == null ? 'TBD' : '₹${val.toStringAsFixed(0)}';
-
-  Future<void> _accept() async {
-    bool accepted = false;
-    final ok = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-          title: const Text('Student Terms & Declaration', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text("Please read and confirm eligibility to accept this task:", 
-                    style: TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.bold)),
-                  const Divider(height: 24),
-                  
-                  _term("1. Eligibility", "I declare I am currently enrolled in a recognized undergraduate program. Ineligible users will be terminated."),
-                  _term("2. Verification", "SKILERN reserves the right to verify my status. False info leads to immediate suspension and payment withholding."),
-                  _term("3. Payment", "Payment is subject to: fulfilling requirements, meeting deadlines, and client approval/satisfaction."),
-                  _term("4. Non-Compliance", "If requirements or client expectations are not met, no payment shall be processed."),
-                  _term("5. Information", "I confirm that all information provided during registration and for this task is true and complete."),
-                  _term("6. Liability", "I am solely responsible for misrepresentation. SKILERN reserves the right to take legal action for damages."),
-                  _term("7. Authority", "All decisions made by SKILERN regarding eligibility, approval, and payout are final and binding."),
-
-                  const SizedBox(height: 20),
-                  Container(
-                    decoration: BoxDecoration(color: Colors.blue.withOpacity(0.05), borderRadius: BorderRadius.circular(12)),
-                    child: CheckboxListTile(
-                      value: accepted,
-                      activeColor: const Color(0xFF6A11CB),
-                      controlAffinity: ListTileControlAffinity.leading,
-                      title: const Text("I have read, understood, and agree to the 7 points above.", 
-                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.black87)),
-                      onChanged: (v) => setDialogState(() => accepted = v ?? false),
-                    ),
-                  )
-                ],
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Decline', style: TextStyle(color: Colors.grey))),
-            ElevatedButton(
-              onPressed: accepted ? () => Navigator.pop(ctx, true) : null, 
-              style: ElevatedButton.styleFrom(backgroundColor: accepted ? const Color(0xFF6A11CB) : Colors.grey),
-              child: const Text('Accept & Start')
-            ),
-          ],
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      elevation: 0, margin: const EdgeInsets.only(bottom: 10),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15), side: const BorderSide(color: Colors.blue, width: 0.5)),
+      child: ListTile(
+        title: Text(widget.task.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+        subtitle: Text("Budget: ₹${widget.task.budget?.toStringAsFixed(0) ?? 'TBD'}", style: const TextStyle(fontSize: 11, color: Colors.blue)),
+        trailing: _busy ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : ElevatedButton(
+          style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
+          onPressed: _accept, child: const Text("Accept", style: TextStyle(fontSize: 11))
         ),
       ),
     );
+  }
 
+  Future<void> _accept() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Accept Task?"),
+        content: const Text("By accepting, you agree to complete the work by the deadline."),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Cancel")),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text("Accept")),
+        ],
+      ),
+    );
     if (ok == true) {
       setState(() => _busy = true);
       try {
         await TaskService().acceptAssignmentRequest(taskId: widget.task.id, acceptedTerms: true);
         widget.onAction(isSilent: true);
-      } catch (e) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
-      } finally {
-        if (mounted) setState(() => _busy = false);
-      }
+      } finally { if (mounted) setState(() => _busy = false); }
     }
   }
-
-  Widget _term(String t, String b) => Padding(
-    padding: const EdgeInsets.only(bottom: 12),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(t, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: Color(0xFF6A11CB))),
-        const SizedBox(height: 2),
-        Text(b, style: const TextStyle(fontSize: 12, height: 1.3, color: Colors.black87)),
-      ],
-    ),
-  );
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      elevation: 0, margin: const EdgeInsets.only(bottom: 10),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18), side: const BorderSide(color: Colors.blue, width: 0.8)),
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        title: Text(widget.task.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-        subtitle: Text("Proposed Budget: ${_formatCurrency(widget.task.budget)}", style: const TextStyle(fontSize: 12, color: Colors.blue, fontWeight: FontWeight.bold)),
-        trailing: _busy ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2)) : ElevatedButton(
-          style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, padding: const EdgeInsets.symmetric(horizontal: 16)),
-          onPressed: _accept, child: const Text("Accept", style: TextStyle(fontSize: 12))
-        ),
-      ),
-    );
-  }
 }
-
-// ---------------------------------------------------------------------------
-// WORKSPACE TASK CARD
-// ---------------------------------------------------------------------------
 
 class _WorkspaceTaskCard extends StatefulWidget {
   final Task task;
@@ -316,115 +226,57 @@ class _WorkspaceTaskCard extends StatefulWidget {
 }
 
 class _WorkspaceTaskCardState extends State<_WorkspaceTaskCard> {
-  bool _busy = false;
-
-  String _formatCurrency(double? val) => val == null ? 'TBD' : '₹${val.toStringAsFixed(0)}';
+  bool _uploading = false;
 
   Future<void> _submitWork() async {
     final noteCtrl = TextEditingController();
     List<Map<String, String>> stagedFiles = [];
-    bool isProcessing = false;
 
     await showDialog(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-          title: const Text("Upload Deliverables", style: TextStyle(fontWeight: FontWeight.bold)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Text("Submit Deliverables"),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (isProcessing) const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 30),
-                  child: Column(
-                    children: [
-                      CircularProgressIndicator(color: Color(0xFF6A11CB)),
-                      SizedBox(height: 16),
-                      Text("Uploading to Secure VPS Vault...", style: TextStyle(fontSize: 12, color: Colors.grey)),
-                    ],
-                  ),
-                )
+                if (_uploading) const CircularProgressIndicator()
                 else ...[
-                  const Text("Select all required project files (PDF, ZIP, Excel, Video, etc.)", 
-                    style: TextStyle(fontSize: 12, color: Colors.grey)),
-                  const SizedBox(height: 16),
-                  
-                  if (stagedFiles.isNotEmpty) ...[
-                    ...stagedFiles.asMap().entries.map((entry) {
-                      int idx = entry.key;
-                      var f = entry.value;
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 8),
-                        decoration: BoxDecoration(color: Colors.blue.withOpacity(0.05), borderRadius: BorderRadius.circular(12)),
-                        child: ListTile(
-                          dense: true,
-                          leading: const Icon(Icons.insert_drive_file_outlined, color: Colors.blue, size: 20),
-                          title: Text(f['name']!, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis),
-                          trailing: IconButton(
-                            icon: const Icon(Icons.remove_circle_outline, color: Colors.red, size: 18),
-                            onPressed: () => setDialogState(() => stagedFiles.removeAt(idx)),
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                    const Divider(height: 24),
-                  ],
-
-                  ElevatedButton.icon(
+                  if (stagedFiles.isNotEmpty)
+                    ...stagedFiles.map((f) => ListTile(dense: true, title: Text(f['name']!, style: const TextStyle(fontSize: 12)))).toList(),
+                  ElevatedButton(
                     onPressed: () async {
-                      final res = await FilePicker.platform.pickFiles(allowMultiple: true, type: FileType.any, withData: true);
+                      final res = await FilePicker.platform.pickFiles(allowMultiple: true, withData: true);
                       if (res != null) {
-                        setDialogState(() => isProcessing = true);
+                        setDialogState(() => _uploading = true);
                         try {
-                          for (var file in res.files) {
-                            final url = await FileService.uploadToVault(file, file.name);
-                            stagedFiles.add({'url': url, 'name': file.name});
+                          for (var f in res.files) {
+                            final url = await FileService.uploadToVault(f, f.name);
+                            stagedFiles.add({'url': url, 'name': f.name});
                           }
-                        } catch (e) {
-                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Upload Error: $e")));
-                        } finally {
-                          setDialogState(() => isProcessing = false);
-                        }
+                        } finally { setDialogState(() => _uploading = false); }
                       }
                     },
-                    icon: const Icon(Icons.add_to_photos_outlined, size: 18),
-                    label: const Text("Select Files"),
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.blue.withOpacity(0.1), foregroundColor: Colors.blue, elevation: 0),
+                    child: const Text("Select Files"),
                   ),
-                  
-                  const SizedBox(height: 20),
-                  TextField(
-                    controller: noteCtrl, 
-                    maxLines: 2, 
-                    style: const TextStyle(fontSize: 13),
-                    decoration: const InputDecoration(
-                      hintText: "Add a note for the Client...",
-                      border: OutlineInputBorder(),
-                      isDense: true
-                    )
-                  ),
-                ],
+                  const SizedBox(height: 12),
+                  TextField(controller: noteCtrl, decoration: const InputDecoration(hintText: "Notes...")),
+                ]
               ],
             ),
           ),
           actions: [
-            TextButton(onPressed: isProcessing ? null : () => Navigator.pop(ctx), child: const Text("Cancel")),
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Cancel")),
             ElevatedButton(
-              onPressed: (stagedFiles.isEmpty || isProcessing) ? null : () async {
-                setDialogState(() => isProcessing = true);
-                try {
-                  await TaskService().submitWork(taskId: widget.task.id, files: stagedFiles, notes: noteCtrl.text);
-                  Navigator.pop(ctx);
-                  widget.onSubmitted(isSilent: true);
-                } catch (e) {
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
-                } finally {
-                  setDialogState(() => isProcessing = false);
-                }
+              onPressed: stagedFiles.isEmpty ? null : () async {
+                await TaskService().submitWork(taskId: widget.task.id, files: stagedFiles, notes: noteCtrl.text);
+                Navigator.pop(ctx);
+                widget.onSubmitted(isSilent: true);
               },
-              child: const Text("Submit Work"),
+              child: const Text("Submit"),
             )
           ],
         ),
@@ -435,105 +287,56 @@ class _WorkspaceTaskCardState extends State<_WorkspaceTaskCard> {
   @override
   Widget build(BuildContext context) {
     final status = widget.task.status.toLowerCase();
-    final bool canSubmit = status == 'assigned' || status == 'declined';
-    final bool isCompleted = status == 'completed';
-    final bool isReview = status == 'under_review';
-    
-    // Logic: Identify files provided by the client
+    final canSubmit = status == 'assigned' || status == 'declined';
     final List<String> clientFiles = widget.task.attachments;
     final List<String> clientFileNames = widget.task.attachmentNames;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: Colors.white, 
-        borderRadius: BorderRadius.circular(20), 
-        border: Border.all(color: isCompleted ? Colors.green.withOpacity(0.2) : Colors.grey.shade100),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))]
-      ),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.grey.shade200)),
       padding: const EdgeInsets.all(18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Expanded(child: Text(widget.task.title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15))),
-              Text(_formatCurrency(widget.task.budget), style: const TextStyle(color: Color(0xFF6A11CB), fontWeight: FontWeight.w900)),
-            ],
-          ),
+          Row(children: [
+            Expanded(child: Text(widget.task.title, style: const TextStyle(fontWeight: FontWeight.bold))),
+            Text("₹${widget.task.budget?.toStringAsFixed(0) ?? 'TBD'}", style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
+          ]),
           const SizedBox(height: 12),
           
           // ============================================================
-          // MODIFICATION: SHOW FILES GIVEN BY CLIENT
+          // DISPLAY CLIENT ATTACHMENTS
           // ============================================================
           if (clientFiles.isNotEmpty) ...[
-            const Text("PROJECT ASSETS FROM CLIENT:", style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: Colors.blueGrey)),
+            const Text("CLIENT PROJECT ASSETS:", style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: Colors.blueGrey)),
             const SizedBox(height: 8),
             Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(color: Colors.blue.withOpacity(0.04), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.blue.withOpacity(0.1))),
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(color: Colors.blue.withOpacity(0.05), borderRadius: BorderRadius.circular(12)),
               child: Column(
                 children: List.generate(clientFiles.length, (index) {
-                  final String url = clientFiles[index];
-                  final String name = clientFileNames.length > index ? clientFileNames[index] : "Brief File ${index + 1}";
+                  final String name = clientFileNames.length > index ? clientFileNames[index] : "Instruction File ${index + 1}";
                   return ListTile(
                     dense: true,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 8),
-                    leading: const Icon(Icons.file_download_outlined, color: Colors.blue, size: 20),
+                    leading: const Icon(Icons.file_present, color: Colors.blue, size: 18),
                     title: Text(name, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.blue)),
-                    trailing: const Icon(Icons.open_in_new, size: 14, color: Colors.grey),
-                    onTap: () {
-                       Navigator.push(context, MaterialPageRoute(
-                         builder: (_) => UnifiedPreviewScreen(url: url, title: "Brief: $name")
-                       ));
-                    },
+                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => UnifiedPreviewScreen(url: clientFiles[index], title: name))),
                   );
                 }),
               ),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 12),
           ],
-          
-          if ((status == 'assigned' || status == 'declined') && widget.task.modificationNotes != null && widget.task.modificationNotes!.isNotEmpty)
-             Container(
-               width: double.infinity,
-               padding: const EdgeInsets.all(12), margin: const EdgeInsets.only(bottom: 14),
-               decoration: BoxDecoration(color: Colors.orange.withOpacity(0.08), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.orange.withOpacity(0.2))),
-               child: Column(
-                 crossAxisAlignment: CrossAxisAlignment.start,
-                 children: [
-                   const Row(
-                     children: [
-                       Icon(Icons.edit_note_rounded, color: Colors.orange, size: 18),
-                       SizedBox(width: 8),
-                       Text("MODIFICATION INSTRUCTIONS", style: TextStyle(fontSize: 11, color: Colors.deepOrange, fontWeight: FontWeight.bold)),
-                     ],
-                   ),
-                   const SizedBox(height: 6),
-                   Text(widget.task.modificationNotes!, style: const TextStyle(fontSize: 12, color: Colors.black87, height: 1.4)),
-                 ],
-               ),
-             ),
+
+          if (widget.task.modificationNotes != null && widget.task.modificationNotes!.isNotEmpty)
+            Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: Colors.orange.withOpacity(0.1), borderRadius: BorderRadius.circular(10)), child: Text("Revision: ${widget.task.modificationNotes!}", style: const TextStyle(fontSize: 12))),
 
           Row(
             children: [
               _statusBadge(status),
               const Spacer(),
-              IconButton(
-                onPressed: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const StudentMainShell(initialIndex: 3))), 
-                icon: const Icon(Icons.chat_bubble_outline, size: 22, color: Colors.blue)
-              ),
-              const SizedBox(width: 8),
-              
-              if (canSubmit) 
-                ElevatedButton(
-                  onPressed: _submitWork, 
-                  child: Text(status == 'assigned' && (widget.task.modificationNotes?.isNotEmpty ?? false) ? "Resubmit" : "Submit Work")
-                )
-              else if (isCompleted)
-                const Row(children: [Icon(Icons.verified, color: Colors.green, size: 16), SizedBox(width: 4), Text("Finalized", style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 12))])
-              else if (isReview)
-                const Text("Under Review", style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 12)),
+              IconButton(icon: const Icon(Icons.chat_bubble_outline, color: Colors.blue), onPressed: () => Navigator.pushReplacementNamed(context, '/studentMain', arguments: 3)),
+              if (canSubmit) ElevatedButton(onPressed: _submitWork, child: const Text("Submit Work", style: TextStyle(fontSize: 11))),
             ],
           )
         ],
@@ -541,18 +344,5 @@ class _WorkspaceTaskCardState extends State<_WorkspaceTaskCard> {
     );
   }
 
-  Widget _statusBadge(String status) {
-    Color c = Colors.grey;
-    String label = status;
-    if (status == 'assigned') { c = Colors.orange; label = "In Progress"; }
-    if (status == 'under_review') { c = Colors.blue; label = "Vetting"; }
-    if (status == 'completed') { c = Colors.green; label = "Completed"; }
-    if (status == 'declined') { c = Colors.red; label = "Revision"; }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(color: c.withOpacity(0.1), borderRadius: BorderRadius.circular(20)),
-      child: Text(label.toUpperCase(), style: TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: c, letterSpacing: 0.5)),
-    );
-  }
+  Widget _statusBadge(String s) => Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: Colors.blue.withOpacity(0.1), borderRadius: BorderRadius.circular(10)), child: Text(s.toUpperCase(), style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold)));
 }
