@@ -10,6 +10,7 @@ import '../../services/auth_service.dart';
 import '../../services/socketservice.dart'; 
 import '../../services/file_service.dart'; 
 import '../../models/task.dart';
+import '../common/unified_preview_screen.dart'; // IMPORTED
 import 'student_main_shell.dart';
 
 class StudentWorkspaceScreen extends StatefulWidget {
@@ -319,9 +320,6 @@ class _WorkspaceTaskCardState extends State<_WorkspaceTaskCard> {
 
   String _formatCurrency(double? val) => val == null ? 'TBD' : '₹${val.toStringAsFixed(0)}';
 
-  // ============================================================
-  // MODIFICATION: MULTI-FILE SECURE VPS SUBMISSION
-  // ============================================================
   Future<void> _submitWork() async {
     final noteCtrl = TextEditingController();
     List<Map<String, String>> stagedFiles = [];
@@ -353,7 +351,6 @@ class _WorkspaceTaskCardState extends State<_WorkspaceTaskCard> {
                     style: TextStyle(fontSize: 12, color: Colors.grey)),
                   const SizedBox(height: 16),
                   
-                  // staged file list
                   if (stagedFiles.isNotEmpty) ...[
                     ...stagedFiles.asMap().entries.map((entry) {
                       int idx = entry.key;
@@ -377,16 +374,11 @@ class _WorkspaceTaskCardState extends State<_WorkspaceTaskCard> {
 
                   ElevatedButton.icon(
                     onPressed: () async {
-                      final res = await FilePicker.platform.pickFiles(
-                        allowMultiple: true, 
-                        type: FileType.any,
-                        withData: true
-                      );
+                      final res = await FilePicker.platform.pickFiles(allowMultiple: true, type: FileType.any, withData: true);
                       if (res != null) {
                         setDialogState(() => isProcessing = true);
                         try {
                           for (var file in res.files) {
-                            // Hit VPS Vault directly
                             final url = await FileService.uploadToVault(file, file.name);
                             stagedFiles.add({'url': url, 'name': file.name});
                           }
@@ -423,11 +415,7 @@ class _WorkspaceTaskCardState extends State<_WorkspaceTaskCard> {
               onPressed: (stagedFiles.isEmpty || isProcessing) ? null : () async {
                 setDialogState(() => isProcessing = true);
                 try {
-                  await TaskService().submitWork(
-                    taskId: widget.task.id, 
-                    files: stagedFiles, 
-                    notes: noteCtrl.text
-                  );
+                  await TaskService().submitWork(taskId: widget.task.id, files: stagedFiles, notes: noteCtrl.text);
                   Navigator.pop(ctx);
                   widget.onSubmitted(isSilent: true);
                 } catch (e) {
@@ -450,6 +438,10 @@ class _WorkspaceTaskCardState extends State<_WorkspaceTaskCard> {
     final bool canSubmit = status == 'assigned' || status == 'declined';
     final bool isCompleted = status == 'completed';
     final bool isReview = status == 'under_review';
+    
+    // Logic: Identify files provided by the client
+    final List<String> clientFiles = widget.task.attachments;
+    final List<String> clientFileNames = widget.task.attachmentNames;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -470,6 +462,37 @@ class _WorkspaceTaskCardState extends State<_WorkspaceTaskCard> {
             ],
           ),
           const SizedBox(height: 12),
+          
+          // ============================================================
+          // MODIFICATION: SHOW FILES GIVEN BY CLIENT
+          // ============================================================
+          if (clientFiles.isNotEmpty) ...[
+            const Text("PROJECT ASSETS FROM CLIENT:", style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: Colors.blueGrey)),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(color: Colors.blue.withOpacity(0.04), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.blue.withOpacity(0.1))),
+              child: Column(
+                children: List.generate(clientFiles.length, (index) {
+                  final String url = clientFiles[index];
+                  final String name = clientFileNames.length > index ? clientFileNames[index] : "Brief File ${index + 1}";
+                  return ListTile(
+                    dense: true,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                    leading: const Icon(Icons.file_download_outlined, color: Colors.blue, size: 20),
+                    title: Text(name, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.blue)),
+                    trailing: const Icon(Icons.open_in_new, size: 14, color: Colors.grey),
+                    onTap: () {
+                       Navigator.push(context, MaterialPageRoute(
+                         builder: (_) => UnifiedPreviewScreen(url: url, title: "Brief: $name")
+                       ));
+                    },
+                  );
+                }),
+              ),
+            ),
+            const SizedBox(height: 14),
+          ],
           
           if ((status == 'assigned' || status == 'declined') && widget.task.modificationNotes != null && widget.task.modificationNotes!.isNotEmpty)
              Container(
