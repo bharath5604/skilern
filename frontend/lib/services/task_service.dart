@@ -36,7 +36,7 @@ class TaskService {
           if (message != null) return message.toString();
         }
       } catch (_) {
-        if (body.startsWith('<!DOCTYPE html')) return 'Server error (${res.statusCode})';
+        if (body.startsWith('<!DOCTYPE html')) return 'Server Error (${res.statusCode})';
         return body;
       }
     }
@@ -94,7 +94,8 @@ class TaskService {
     }
   }
 
-  /// MODIFICATION: Removed 'budget' parameter.
+  /// CREATE TASK (Client)
+  /// Note: Budget is excluded as it is finalized by Admin later.
   Future<Map<String, dynamic>> createTask({
     required String title,
     required String description,
@@ -129,7 +130,40 @@ class TaskService {
     return handleMapResponse(res, err: 'Task creation failed');
   }
 
-  /// MODIFICATION: Removed 'budget' parameter.
+  /// UPDATE TASK (Edit Feature)
+  /// Allows the Client to modify project details of an existing task.
+  Future<Map<String, dynamic>> updateTask({
+    required String taskId,
+    required String title,
+    required String description,
+    required String deadline,
+    String? location,
+    String? domain,
+    List<String>? requiredSkills,
+    List<String>? attachments,
+    List<String>? attachmentNames,
+  }) async {
+    final body = <String, dynamic>{
+      'title': title.trim(),
+      'description': description.trim(),
+      'deadline': deadline,
+      if (location != null) 'location': location.trim(),
+      if (domain != null) 'domain': domain.trim(),
+      if (requiredSkills != null) 'requiredSkills': requiredSkills,
+      if (attachments != null) 'attachments': attachments,
+      if (attachmentNames != null) 'attachmentNames': attachmentNames,
+    };
+
+    // Logic: Hits the POST /api/tasks/[taskId]/update route
+    final res = await client.post(
+      Uri.parse('$baseUrl/$taskId/update'), 
+      headers: headers, 
+      body: jsonEncode(body)
+    ).timeout(timeout);
+    
+    return handleMapResponse(res, err: 'Task update failed');
+  }
+
   Future<Map<String, dynamic>> createGuestTask({
     required String title,
     required String description,
@@ -163,38 +197,6 @@ class TaskService {
   Future<List<Task>> getMyTasks() async {
     final res = await client.get(Uri.parse('$baseUrl/mine'), headers: headers).timeout(timeout);
     return handleTaskListResponse(res);
-  }
-
-  /// MODIFICATION: Removed 'budget' parameter.
-  Future<Map<String, dynamic>> updateTask({
-    required String taskId,
-    required String title,
-    required String description,
-    required String deadline,
-    String? location,
-    String? domain,
-    List<String>? requiredSkills,
-    List<String>? attachments,
-    List<String>? attachmentNames,
-  }) async {
-    final body = <String, dynamic>{
-      'title': title.trim(),
-      'description': description.trim(),
-      'deadline': deadline,
-      if (location != null) 'location': location.trim(),
-      if (domain != null) 'domain': domain.trim(),
-      if (requiredSkills != null) 'requiredSkills': requiredSkills,
-      if (attachments != null) 'attachments': attachments,
-      if (attachmentNames != null) 'attachmentNames': attachmentNames,
-    };
-
-    final res = await client.post(
-      Uri.parse('$baseUrl/$taskId/update'), 
-      headers: headers, 
-      body: jsonEncode(body)
-    ).timeout(timeout);
-    
-    return handleMapResponse(res, err: 'Task update failed');
   }
 
   Future<void> deleteTask(String taskId) async {
@@ -265,9 +267,8 @@ class TaskService {
     return handleTaskListResponse(res);
   }
 
-  // ============================================================
-  // MODIFICATION: MULTI-FILE SUBMISSION
-  // ============================================================
+  /// STUDENT SUBMIT WORK
+  /// UPDATED: Accepts a list of file maps (url and name)
   Future<Map<String, dynamic>> submitWork({
     required String taskId, 
     required List<Map<String, String>> files, 
@@ -277,7 +278,7 @@ class TaskService {
       Uri.parse('$baseUrl/$taskId/submit'), 
       headers: headers, 
       body: jsonEncode({
-        'files': files, // Sending the full list of deliverables
+        'files': files, 
         if (notes != null) 'notes': notes
       }),
     ).timeout(timeout);

@@ -20,13 +20,11 @@ function normalizeString(str) {
 
 /**
  * Global Real-time Broadcast Helper
- * room: specific sub-room or userId
  */
 const emitUpdate = (req, room, event, data) => {
   const io = req.app.get('socketio');
   if (io) {
     io.to(room).emit(event, data);
-    // Refresh counters on all Admin Dashboards globally
     io.emit('admin_stats_update', { timestamp: new Date() });
   }
 };
@@ -56,6 +54,7 @@ exports.createTask = async (req, res) => {
       title: title.trim(),
       description: description.trim(),
       budget: null, 
+      studentPayout: 0, // Initialized as 0
       deadline: new Date(deadline),
       location: String(location || '').trim(),
       domain: cleanDomain,
@@ -87,97 +86,109 @@ exports.createTask = async (req, res) => {
 };
 
 /**
- * CREATE GUEST TASK (Emergency Lead)
+ * UPDATE TASK (Edit Feature for Clients)
+ * Allows the creator to modify details of an active task.
  */
-exports.createGuestTask = async (req, res) => {
-  try {
-    const {
-      title, description, guestName, guestMobile, guestEmail,
-      deadline, domain, requiredSkills
-    } = req.body;
-
-    if (!title || !description || !guestName || !guestMobile || !deadline) {
-      return res.status(400).json({ message: 'Missing required guest fields' });
-    }
-
-    const cleanDomain = normalizeString(domain || 'General');
-    const cleanSkills = (requiredSkills || []).map(s => normalizeString(s)).filter(s => s.length > 0);
-
-    const task = await Task.create({
-      title: title.trim(),
-      description: description.trim(),
-      isGuestTask: true,
-      guestInfo: {
-        name: guestName.trim(),
-        mobile: guestMobile.trim(),
-        email: (guestEmail || '').trim()
-      },
-      budget: null, 
-      deadline: new Date(deadline),
-      domain: cleanDomain,
-      requiredSkills: cleanSkills,
-      status: 'open'
-    });
-
-    emitUpdate(req, 'admin_room', 'emergency_task_created', { taskId: task._id });
-
-    return res.status(201).json({
-      message: 'Emergency task submitted. Admin will contact you shortly.',
-      task
-    });
-  } catch (err) {
-    return res.status(500).json({ message: 'Failed to submit guest task' });
-  }
-};
-
-/**
- * RATE STUDENT & UPDATE REPUTATION
- */
-exports.rateStudent = async (req, res) => {
-  try {
-    const scoreValue = Number(req.body.score);
-    const feedbackText = req.body.feedback || req.body.text || '';
-
-    const task = await Task.findById(req.params.id || req.params.taskId);
-    if (!task) return res.status(404).json({ message: 'Task not found' });
-
-    task.score = scoreValue;
-    task.rating = scoreValue;
-    task.feedback = feedbackText;
-    await task.save();
-
-    const student = await User.findById(task.student);
-    const client = await User.findById(req.user.id);
-
-    if (student) {
-      student.totalScore = (student.totalScore || 0) + scoreValue;
-      student.totalScoreCount = (student.totalScoreCount || 0) + 1;
-      student.feedbackEntries.push({
-        taskId: task._id, taskTitle: task.title, clientId: req.user.id,
-        clientName: client?.name || "Client", rating: scoreValue,
-        comment: feedbackText, domain: task.domain, createdAt: new Date()
-      });
-      await student.save();
+exports.updateTask = async (req, res) => {
+    try {
+      const { id } = req.params;
+      const {
+        title, description, deadline, location,
+        domain, requiredSkills, attachments, attachmentNames
+      } = req.body;
+  
+      const task = await Task.findById(id);
+  
+      if (!task) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+  
+      // SECURITY: Ensure only the Client who created the task can edit it
+      if (task.client.toString() !== req.user.id) {
+        return res.status(403).json({ message: "Unauthorized to edit this task" });
+      }
+  
+      // Apply field updates
+      if (title) task.title = title.trim();
+      if (description) task.description = description.trim();
+      if (deadline) task.deadline = new Date(deadline);
+      if (location) task.location = location.trim();
+      if (domain) task.domain = normalizeString(domain);
+      if (requiredSkills) task.requiredSkills = requiredSkills;
       
-      emitUpdate(req, student._id.toString(), 'feedback_update', { score: scoreValue });
-
-      await sendNotification(student._id.toString(), {
-          title: "New Project Review",
-          body: `You received a ${scoreValue}-star rating for ${task.title}.`,
-          data: { type: "payment_received", taskId: task._id.toString() }
-      }, req);
+      // Update attachments if they were modified in the UI
+      if (attachments) task.attachments = attachments;
+      if (attachmentNames) task.attachmentNames = attachmentNames;
+  
+      await task.save();
+  
+      // Refresh UI for Admin, Client, and Assigned Student
+      emitUpdate(req, 'admin_room', 'task_update', { taskId: task._id });
+      emitUpdate(req, `${task._id}_client`, 'task_update', { taskId: task._id });
+      
+      if (task.student) {
+        emitUpdate(req, `${task._id}_student_${task.student}`, 'task_update', { taskId: task._id });
+      }
+  
+      return res.json({ message: "Task updated successfully", task });
+    } catch (err) {
+      console.error("Update Task Error:", err);
+      return res.status(500).json({ message: "Failed to update task details" });
     }
-    return res.json({ success: true });
-  } catch (err) { res.status(500).json({ message: err.message }); }
+  };
+
+/**
+ * FINALIZE BUDGET (Split Financials Logic)
+ * MODIFIED: Handles separate Client Budget and Student Payout.
+ */
+exports.finalizeTaskBudget = async (req, res) => {
+    try {
+      const { taskId } = req.params;
+      const { clientBudget, studentPayout } = req.body;
+      
+      const task = await Task.findById(taskId);
+      if (!task) return res.status(404).json({ message: "Task not found" });
+  
+      // Only update if the 플랫폼 hasn't received payment yet
+      if (task.adminReceivedPayment) {
+        return res.status(400).json({ message: "Finances cannot be changed after payment verification." });
+      }
+  
+      if (clientBudget) task.budget = Number(clientBudget);
+      if (studentPayout) task.studentPayout = Number(studentPayout);
+      
+      task.budgetFinalized = true; 
+      await task.save();
+  
+      // PRIVACY SYNC: Send only relevant data to each room
+      // Notify Client of the total cost they need to pay
+      emitUpdate(req, `${taskId}_client`, 'task_update', { 
+          taskId, 
+          budget: task.budget, 
+          budgetFinalized: true 
+      });
+  
+      // Notify Student of their earnings ONLY (Hide Client Budget)
+      if (task.student) {
+          emitUpdate(req, `${taskId}_student_${task.student}`, 'task_update', { 
+              taskId, 
+              studentPayout: task.studentPayout, 
+              budgetFinalized: true 
+          });
+      }
+      
+      res.json({ message: "Budgets Finalized and Locked.", task });
+    } catch (error) { 
+        console.error("Budget Finalization Error:", error);
+        res.status(500).json({ message: "Server Error" }); 
+    }
 };
 
 /**
- * STUDENT SUBMIT WORK
- * MODIFIED: Supports multiple files and varied types.
+ * STUDENT SUBMIT WORK (Multi-file)
  */
 exports.submitWork = async (req, res) => {
   try {
-    // UPDATED: Destructure 'files' array instead of 'fileUrl'
     const { files, notes } = req.body;
     const task = await Task.findById(req.params.taskId || req.params.id);
 
@@ -186,15 +197,14 @@ exports.submitWork = async (req, res) => {
     }
 
     if (!files || !Array.isArray(files) || files.length === 0) {
-      return res.status(400).json({ message: 'At least one deliverable file is required' });
+      return res.status(400).json({ message: 'Deliverable files are required' });
     }
 
-    // Logic: Structure the submission with the new array
     task.submission = {
       student: req.user.id,
       files: files.map(f => ({
         url: String(f.url || '').trim(),
-        name: String(f.name || 'Untitled File').trim()
+        name: String(f.name || 'Untitled').trim()
       })),
       notes: String(notes || '').trim(),
       approved: false,
@@ -204,7 +214,7 @@ exports.submitWork = async (req, res) => {
     task.status = 'under_review';
     task.clientCanViewSubmission = true; 
     task.clientCanDownload = false; 
-    task.modificationNotes = ''; // Clear revision instructions
+    task.modificationNotes = ''; 
 
     await task.save();
 
@@ -215,16 +225,13 @@ exports.submitWork = async (req, res) => {
     if (admin) {
         await sendNotification(admin._id.toString(), {
             title: "Work Submitted",
-            body: `Student delivered work for: ${task.title}. Review required.`,
+            body: `Student delivered work for: ${task.title}.`,
             data: { type: "task_submitted", taskId: task._id.toString() }
         }, req);
     }
 
     return res.json({ message: 'Work submitted for review', task });
-  } catch (err) { 
-    console.error("SubmitWork Error:", err);
-    return res.status(500).json({ message: 'Submission failed' }); 
-  }
+  } catch (err) { return res.status(500).json({ message: 'Submission failed' }); }
 };
 
 /**
@@ -262,8 +269,7 @@ exports.approveWork = async (req, res) => {
 };
 
 /**
- * CLIENT DECLINE / MODIFY (REVISION - NO LIMIT)
- * MODIFIED: Clears submission files so student can resubmit correctly.
+ * CLIENT DECLINE / MODIFY
  */
 exports.declineWork = async (req, res) => {
   try {
@@ -275,8 +281,6 @@ exports.declineWork = async (req, res) => {
     }
 
     task.attemptCount = (task.attemptCount || 0) + 1;
-    
-    // Logic: Clear current submission to force a fresh upload
     task.submission = null; 
     task.status = 'assigned'; 
     task.modificationNotes = String(reason || '').trim();
@@ -284,22 +288,16 @@ exports.declineWork = async (req, res) => {
     await task.save();
 
     const admin = await User.findOne({ role: 'admin' });
-    if (admin) {
+    if (admin && task.student) {
         await Message.create({
             task: task._id, sender: admin._id, receiver: task.student, 
             student: task.student, 
-            text: `⚠️ MODIFICATION REQUESTED BY CLIENT:\n"${reason}"`
-        });
-        await Message.create({
-            task: task._id, sender: admin._id, receiver: task.client,
-            student: null, 
-            text: `✅ You requested these modifications:\n"${reason}"`
+            text: `⚠️ REVISION REQUIRED:\n"${reason}"`
         });
     }
 
     if (task.student) {
       emitUpdate(req, `${task._id}_student_${task.student}`, 'task_update', { taskId: task._id });
-      
       await sendNotification(task.student.toString(), {
           title: "Revision Required",
           body: `Client requested changes for: ${task.title}.`,
@@ -333,7 +331,8 @@ exports.getTaskById = async (req, res) => {
   try {
     const task = await Task.findById(req.params.taskId || req.params.id)
       .populate('client', 'name email company mobile')
-      .populate('student', 'name email mobile skills tasksCompleted bankAccountHolderName bankAccountNumber ifscCode totalScore totalScoreCount');
+      .populate('student', 'name email mobile skills tasksCompleted bankAccountHolderName bankAccountNumber ifscCode totalScore totalScoreCount')
+      .select('+attachments +attachmentNames +studentPayout'); // CRITICAL FOR VIEWING ASSETS
     if (!task) return res.status(404).json({ message: 'Task not found' });
     return res.json(task);
   } catch (err) { return res.status(500).json({ message: 'Error fetching task' }); }

@@ -166,10 +166,8 @@ class _AdminTaskDetailScreenState extends State<AdminTaskDetailScreen> {
     }
   }
 
-  // ============================================================
-  // MODIFICATION: DUAL FINALIZE LOGIC (CLIENT vs STUDENT)
-  // ============================================================
-  Future<void> _handleFinalizeFinancials(String clientAmt, String studentAmt) async {
+  /// MODIFIED: Dual financial handling (Client Cost vs Student Earnings)
+  Future<void> _handleFinalizeBudget(String clientAmt, String studentAmt) async {
     final double? cVal = double.tryParse(clientAmt);
     final double? sVal = double.tryParse(studentAmt);
     
@@ -180,15 +178,14 @@ class _AdminTaskDetailScreenState extends State<AdminTaskDetailScreen> {
 
     setState(() => finalizingBudget = true);
     try {
-      // Logic: Update the Admin Service call to pass both values
-      // Ensure your admin_payment_service.dart matches this body
+      // Calls the Admin Payment Service with both split values
       await paymentService.finalizeTaskBudget(
         taskId: _taskId(), 
-        amount: cVal, // Sending client amount to standard field
-        // Note: studentPayout is handled by the backend controller logic I gave you
+        clientBudget: cVal, 
+        studentPayout: sVal
       );
       
-      _showSnackBar("Budgets Finalized. Client & Student views updated.");
+      _showSnackBar("Financials finalized. Views updated for all roles.");
       await _reloadTaskData();
     } catch (e) { 
       _showSnackBar("Finalization failed: $e"); 
@@ -202,7 +199,7 @@ class _AdminTaskDetailScreenState extends State<AdminTaskDetailScreen> {
     try {
       await adminService.confirmClientPayment(_taskId());
       await _reloadTaskData();
-      _showSnackBar("Client payment confirmed and files unlocked.");
+      _showSnackBar("Payment confirmed and files unlocked.");
     } catch (e) { _showSnackBar("Update failed"); }
     finally { setState(() => processingPayment = false); }
   }
@@ -282,15 +279,9 @@ class _AdminTaskDetailScreenState extends State<AdminTaskDetailScreen> {
                    ElevatedButton.icon(
                      style: ElevatedButton.styleFrom(backgroundColor: Colors.blueGrey, minimumSize: const Size(double.infinity, 40)),
                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => UnifiedPreviewScreen(
-                              url: profile['idCardUrl'],
-                              title: "ID Proof: $studentName",
-                            ),
-                          ),
-                        );
+                        Navigator.push(context, MaterialPageRoute(
+                            builder: (_) => UnifiedPreviewScreen(url: profile['idCardUrl'], title: "ID Proof: $studentName")
+                        ));
                      }, 
                      icon: const Icon(Icons.badge, size: 18), label: const Text("View Identity Proof", style: TextStyle(fontSize: 12))
                    ),
@@ -342,7 +333,7 @@ class _AdminTaskDetailScreenState extends State<AdminTaskDetailScreen> {
   }
 
   // ============================================================
-  // MODIFICATION: DUAL FINANCIAL BUDGET FINALIZER
+  // MODIFICATION: DUAL BUDGET FINALIZER (RESTORED & SPLIT)
   // ============================================================
   Widget _buildBudgetFinalizer() {
     final status = _taskData['status'];
@@ -350,8 +341,8 @@ class _AdminTaskDetailScreenState extends State<AdminTaskDetailScreen> {
     if (_taskData['adminReceivedPayment'] == true) return const SizedBox.shrink();
 
     final bool isFinalized = _taskData['budgetFinalized'] == true;
-    final TextEditingController clientAmountCtrl = TextEditingController(text: _taskData['budget']?.toString() ?? '');
-    final TextEditingController studentPayoutCtrl = TextEditingController(text: _taskData['studentPayout']?.toString() ?? '');
+    final TextEditingController clientCtrl = TextEditingController(text: _taskData['budget']?.toString() ?? '');
+    final TextEditingController studentCtrl = TextEditingController(text: _taskData['studentPayout']?.toString() ?? '');
 
     return Container(
       margin: const EdgeInsets.only(top: 16),
@@ -364,21 +355,21 @@ class _AdminTaskDetailScreenState extends State<AdminTaskDetailScreen> {
           const SizedBox(height: 14),
           Row(
             children: [
-              Expanded(child: TextField(controller: clientAmountCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: "Client Pays (INR)", isDense: true, border: OutlineInputBorder()))),
+              Expanded(child: TextField(controller: clientCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: "Client Pays (Total)", isDense: true, border: OutlineInputBorder()))),
               const SizedBox(width: 10),
-              Expanded(child: TextField(controller: studentPayoutCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: "Student Gets (INR)", isDense: true, border: OutlineInputBorder()))),
+              Expanded(child: TextField(controller: studentCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: "Student Gets (Net)", isDense: true, border: OutlineInputBorder()))),
             ],
           ),
           const SizedBox(height: 12),
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: finalizingBudget ? null : () => _handleFinalizeFinancials(clientAmountCtrl.text, studentPayoutCtrl.text),
+              onPressed: finalizingBudget ? null : () => _handleFinalizeBudget(clientCtrl.text, studentCtrl.text),
               style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-              child: Text(isFinalized ? "Update Financials" : "Finalize & Lock Prices"),
+              child: Text(isFinalized ? "Update Values" : "Finalize & Lock Amounts"),
             ),
           ),
-          if (isFinalized) const Padding(padding: EdgeInsets.only(top: 8), child: Text("Amounts are saved. Profit margin is now secured.", style: TextStyle(fontSize: 10, fontStyle: FontStyle.italic, color: Colors.grey))),
+          if (isFinalized) const Padding(padding: EdgeInsets.only(top: 8), child: Text("Budget is locked. Margin is now secured and hidden.", style: TextStyle(fontSize: 10, fontStyle: FontStyle.italic, color: Colors.grey))),
         ],
       ),
     );
@@ -416,13 +407,9 @@ class _AdminTaskDetailScreenState extends State<AdminTaskDetailScreen> {
     );
   }
 
-  // ============================================================
-  // UI: CLIENT ATTACHMENTS (PROJECT BRIEF)
-  // ============================================================
   Widget _buildClientAttachmentsSection() {
     final List attachments = _taskData['attachments'] as List? ?? [];
     final List names = _taskData['attachmentNames'] as List? ?? [];
-    
     if (attachments.isEmpty) return const SizedBox.shrink();
 
     return Container(
@@ -437,7 +424,6 @@ class _AdminTaskDetailScreenState extends State<AdminTaskDetailScreen> {
           ...List.generate(attachments.length, (index) {
             final String url = attachments[index].toString();
             final String name = names.length > index ? names[index].toString() : "Project File ${index + 1}";
-            
             return Container(
               margin: const EdgeInsets.only(bottom: 8),
               decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
@@ -446,11 +432,7 @@ class _AdminTaskDetailScreenState extends State<AdminTaskDetailScreen> {
                 leading: const Icon(Icons.description_outlined, color: Colors.blue),
                 title: Text(name, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                 trailing: const Icon(Icons.remove_red_eye_outlined, size: 18, color: Colors.grey),
-                onTap: () {
-                  Navigator.push(context, MaterialPageRoute(
-                    builder: (_) => UnifiedPreviewScreen(url: url, title: "Brief: $name")
-                  ));
-                },
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => UnifiedPreviewScreen(url: url, title: "Brief: $name"))),
               ),
             );
           }),
@@ -459,13 +441,9 @@ class _AdminTaskDetailScreenState extends State<AdminTaskDetailScreen> {
     );
   }
 
-  // ============================================================
-  // UI: QUALITY CHECK SECTION (HANDLES LIST AND LEGACY)
-  // ============================================================
   Widget _buildSubmissionSection() {
     final submission = _safeMap(_taskData['submission']);
     if (submission.isEmpty) return const SizedBox.shrink();
-
     final List files = submission['files'] is List ? submission['files'] : [];
     final String? legacyUrl = submission['fileUrl']?.toString();
 
@@ -480,21 +458,13 @@ class _AdminTaskDetailScreenState extends State<AdminTaskDetailScreen> {
         children: [
           const Text('ADMIN QUALITY CHECK: STUDENT WORK', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 10, color: Colors.green)),
           const SizedBox(height: 12),
-          
           if (files.isNotEmpty)
-            ...files.map((file) {
-              final String fUrl = file['url']?.toString() ?? '';
-              final String fName = file['name']?.toString() ?? 'Work File';
-              return _fileQualityCheckTile(fName, fUrl);
-            }).toList(),
-
-          if (files.isEmpty && legacyUrl != null && legacyUrl.isNotEmpty)
-            _fileQualityCheckTile("Work Deliverable (Legacy Single File)", legacyUrl),
-
+            ...files.map((file) => _fileQualityCheckTile(file['name']?.toString() ?? 'Work File', file['url']?.toString() ?? '')).toList(),
+          if (files.isEmpty && legacyUrl != null)
+            _fileQualityCheckTile("Work Deliverable (Legacy)", legacyUrl),
           if (submission['notes'] != null && submission['notes'].toString().isNotEmpty) ...[
             const SizedBox(height: 12),
-            const Text("STUDENT SUBMISSION NOTE:", style: TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: Colors.blueGrey)),
-            const SizedBox(height: 4),
+            const Text("STUDENT NOTE:", style: TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: Colors.blueGrey)),
             Text(submission['notes'], style: const TextStyle(fontSize: 12, color: Colors.black87, fontStyle: FontStyle.italic)),
           ]
         ],
@@ -510,19 +480,8 @@ class _AdminTaskDetailScreenState extends State<AdminTaskDetailScreen> {
         dense: true,
         leading: const Icon(Icons.insert_drive_file_outlined, color: Colors.green),
         title: Text(name, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-        subtitle: const Text("Tap to review or download", style: TextStyle(fontSize: 10, color: Colors.grey)),
         trailing: const Icon(Icons.remove_red_eye_outlined, color: Colors.blue, size: 18),
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => UnifiedPreviewScreen(
-                url: url, 
-                title: "Quality Check: $name"
-              ),
-            ),
-          );
-        },
+        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => UnifiedPreviewScreen(url: url, title: "Quality Check: $name"))),
       ),
     );
   }
@@ -534,7 +493,6 @@ class _AdminTaskDetailScreenState extends State<AdminTaskDetailScreen> {
     final guest = _safeMap(task['guestInfo']);
     final client = _safeMap(task['client']);
     final requiredSkills = _safeStringList(task['requiredSkills']);
-
     final clientName = isGuest ? _safeString(guest['name']) : _safeString(client['name']);
     final clientMobile = isGuest ? _safeString(guest['mobile']) : _safeString(client['mobile']);
 
@@ -553,18 +511,37 @@ class _AdminTaskDetailScreenState extends State<AdminTaskDetailScreen> {
                 if (isGuest) Container(margin: const EdgeInsets.only(bottom: 8), padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: Colors.orange, borderRadius: BorderRadius.circular(8)), child: const Text("EMERGENCY TASK", style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold))),
                 Text(_safeString(task['title']), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
                 const Divider(height: 20),
-                Row(children: [Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text("Client: $clientName", style: const TextStyle(fontWeight: FontWeight.bold)), Text("Mob: $clientMobile", style: const TextStyle(fontSize: 12, color: Colors.grey))])), IconButton(icon: const Icon(Icons.call, color: Colors.green), onPressed: () => _makeCall(clientMobile)), IconButton(icon: const Icon(Icons.chat_outlined, color: _primaryRed), onPressed: () => Navigator.pushNamed(context, '/taskChat', arguments: {'taskId': _taskId(), 'taskTitle': task['title'], 'peerStudentId': null}))]),
+                Row(children: [Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text("Client: $clientName", style: const TextStyle(fontWeight: FontWeight.bold)), Text("Mob: $clientMobile", style: const TextStyle(fontSize: 12, color: Colors.grey))])), IconButton(icon: const Icon(Icons.call, color: Colors.green), onPressed: () => _makeCall(clientMobile)), IconButton(icon: const Icon(Icons.chat_outlined, color: _primaryRed), onPressed: () => _openChat(null))]),
               ],
             ),
           ),
-          
           _buildClientAttachmentsSection(), 
           _buildSubmissionSection(),
           _buildBudgetFinalizer(), 
           _buildAdminPaymentControl(),
           const SizedBox(height: 16),
-          _buildDescriptionCard(),
+          Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(color: _surface, borderRadius: BorderRadius.circular(20), border: Border.all(color: _border)),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text("REQUIRED SKILLS", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.grey)),
+                const SizedBox(height: 10),
+                Wrap(spacing: 8, children: requiredSkills.map((s) => Chip(backgroundColor: _primaryRed.withOpacity(0.05), label: Text(s, style: const TextStyle(fontSize: 11, color: _primaryRed)))).toList()),
+                const Divider(height: 24),
+                const Text("DESCRIPTION", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.grey)),
+                const SizedBox(height: 8),
+                Text(_safeString(task['description']), style: const TextStyle(fontSize: 13, color: Colors.black87, height: 1.4)),
+                const SizedBox(height: 12),
+                Text("Final Client Cost: ${_formatCurrency(_safeNum(task['budget']))}", style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
+                Text("Student Earning: ${_formatCurrency(_safeNum(task['studentPayout']))}", style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 12)),
+              ],
+            ),
+          ),
           const SizedBox(height: 24),
+          const Text("CANDIDATE VETTING", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, fontSize: 11, letterSpacing: 1.1)),
+          const SizedBox(height: 10),
           if (_hasAssignedStudent()) _buildAssignedStudentCard(),
           _buildSuggestedStudentsSection(),
           const SizedBox(height: 50),
@@ -573,139 +550,26 @@ class _AdminTaskDetailScreenState extends State<AdminTaskDetailScreen> {
     );
   }
 
-  Widget _buildDescriptionCard() {
-    final requiredSkills = _safeStringList(_taskData['requiredSkills']);
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(color: _surface, borderRadius: BorderRadius.circular(20), border: Border.all(color: _border)),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text("REQUIRED SKILLS", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.grey)),
-          const SizedBox(height: 10),
-          Wrap(spacing: 8, children: requiredSkills.map((s) => Chip(backgroundColor: _primaryRed.withOpacity(0.05), label: Text(s, style: const TextStyle(fontSize: 11, color: _primaryRed)))).toList()),
-          const Divider(height: 24),
-          const Text("DESCRIPTION", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.grey)),
-          const SizedBox(height: 8),
-          Text(_safeString(_taskData['description']), style: const TextStyle(fontSize: 13, color: Colors.black87, height: 1.4)),
-          const SizedBox(height: 12),
-          Text("Final Client Cost: ${_formatCurrency(_safeNum(_taskData['budget']))}", style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
-          Text("Student Earning: ${_formatCurrency(_safeNum(_taskData['studentPayout']))}", style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 12)),
-        ],
-      ),
-    );
-  }
-
   Widget _buildAssignedStudentCard() {
     final student = _safeMap(_taskMap()['student']);
-    final studentId = _extractId(student);
-    final name = _safeString(student['name'], fallback: 'Assigned student');
-
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
       decoration: BoxDecoration(color: Colors.green.withOpacity(0.05), borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.green.withOpacity(0.2))),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Row(
-          children: [
-            CircleAvatar(backgroundColor: Colors.green.withOpacity(0.1), child: Text(_initialsFromName(name), style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold))),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                  Row(
-                    children: [
-                      _ratingBadge(_safeNum(student['totalScore']), _safeInt(student['totalScoreCount'])),
-                      const SizedBox(width: 8),
-                      Text(_safeString(student['mobile']), style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            IconButton(icon: const Icon(Icons.chat_bubble_outline, color: Colors.blue, size: 22), onPressed: () => _openChat(studentId)),
-            IconButton(icon: const Icon(Icons.call, color: Colors.green, size: 22), onPressed: () => _makeCall(_safeString(student['mobile']))),
-            IconButton(icon: const Icon(Icons.info_outline, color: Colors.grey, size: 22), onPressed: () => _showStudentDetails(student)),
-          ],
-        ),
+      child: ListTile(
+        leading: CircleAvatar(backgroundColor: Colors.green.withOpacity(0.1), child: Text(_initialsFromName(_safeString(student['name'])), style: const TextStyle(color: Colors.green))),
+        title: Text(_safeString(student['name']), style: const TextStyle(fontWeight: FontWeight.bold)),
+        trailing: IconButton(icon: const Icon(Icons.chat_bubble_outline, color: Colors.blue), onPressed: () => _openChat(_extractId(student))),
       ),
     );
   }
 
   Widget _buildSuggestedStudentsSection() {
-    final bool isOccupied = _hasAssignedStudent() || _taskData['requestedStudent'] != null;
-
-    return Column(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: _border)),
-          child: Row(
-            children: [
-              Expanded(child: DropdownButtonFormField<String>(isExpanded: true, value: selectedFilterLoc, hint: const Text("City"), items: [const DropdownMenuItem(value: null, child: Text("All")), ...availableLocs.map((e) => DropdownMenuItem(value: e, child: Text(e, style: const TextStyle(fontSize: 12))))], onChanged: (v) { setState(() => selectedFilterLoc = v); _loadSuggestedStudents(); })),
-              const SizedBox(width: 8),
-              Expanded(child: DropdownButtonFormField<String>(isExpanded: true, value: selectedFilterSkill, hint: const Text("Skill"), items: [const DropdownMenuItem(value: null, child: Text("All")), ...availableSkills.map((e) => DropdownMenuItem(value: e, child: Text(e, style: const TextStyle(fontSize: 12))))], onChanged: (v) { setState(() => selectedFilterSkill = v); _loadSuggestedStudents(); })),
-            ],
-          ),
-        ),
-        const SizedBox(height: 16),
-        if (loadingSuggestions) const Center(child: CircularProgressIndicator()),
-        ...suggestedStudents.map((s) {
-          final isInvited = _extractId(_taskData['requestedStudent']) == _extractId(s);
-          return Card(
-            margin: const EdgeInsets.only(bottom: 12),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: _border)),
-            child: InkWell(
-              onTap: () => _showStudentDetails(s),
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  children: [
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: CircleAvatar(child: Text(_initialsFromName(_safeString(s['name'])))),
-                      title: Row(
-                        children: [
-                          Expanded(child: Text(_safeString(s['name']), style: const TextStyle(fontWeight: FontWeight.w700))),
-                          _ratingBadge(_safeNum(s['totalScore']), _safeInt(s['totalScoreCount'])),
-                        ],
-                      ),
-                      subtitle: Text("Completed: ${_safeInt(s['tasksCompleted'])} tasks • ${_safeString(s['location'])}"),
-                    ),
-                    Row(
-                      children: [
-                        IconButton(icon: const Icon(Icons.chat_bubble_outline, color: Colors.blue), onPressed: () => Navigator.pushNamed(context, '/taskChat', arguments: {'taskId': _taskId(), 'taskTitle': _taskData['title'], 'peerStudentId': _extractId(s)})),
-                        const Spacer(),
-                        ElevatedButton(
-                          style: ElevatedButton.styleFrom(backgroundColor: isInvited ? Colors.green : _primaryRed),
-                          onPressed: (isOccupied || isInvited) ? null : () => _sendRequestToStudent(s),
-                          child: Text(isInvited ? "Sent" : (isOccupied ? "Occupied" : "Invite")),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          );
-        }).toList(),
-      ],
-    );
+    if (suggestedStudents.isEmpty) return const SizedBox.shrink();
+    return Column(children: suggestedStudents.map((s) => Card(child: ListTile(title: Text(_safeString(s['name'])), subtitle: Text(_safeString(s['location'])), trailing: ElevatedButton(onPressed: sendingRequest ? null : () => _sendRequestToStudent(s), child: const Text("Invite"))))).toList());
   }
 
-  Widget _iconDetail(IconData icon, String text) {
-    return Padding(padding: const EdgeInsets.only(bottom: 8), child: Row(children: [Icon(icon, size: 16, color: Colors.grey), const SizedBox(width: 10), Text(text, style: const TextStyle(fontSize: 14))]));
-  }
-
-  Widget _infoCardRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(children: [Text("$label:", style: const TextStyle(fontSize: 12, color: Colors.grey)), const Spacer(), Text(value, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold))]),
-    );
-  }
-
+  Widget _iconDetail(IconData icon, String text) => Padding(padding: const EdgeInsets.only(bottom: 8), child: Row(children: [Icon(icon, size: 16, color: Colors.grey), const SizedBox(width: 10), Text(text, style: const TextStyle(fontSize: 14))]));
+  Widget _infoCardRow(String l, String v) => Row(children: [Text("$l:", style: const TextStyle(fontSize: 12, color: Colors.grey)), const Spacer(), Text(v, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold))]);
   Future<void> _makeCall(String num) async { if (num.isEmpty) return; final Uri u = Uri(scheme: 'tel', path: num); if (await canLaunchUrl(u)) await launchUrl(u); }
   void _showSnackBar(String m) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m), behavior: SnackBarBehavior.floating));
 }

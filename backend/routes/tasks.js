@@ -5,19 +5,18 @@ const Task = require('../models/Task');
 const User = require('../models/User');
 const Message = require('../models/Message');
 const verifyJWT = require('../middleware/authMiddleware');
-const taskController = require('../controllers/taskController'); // Core Logic
+const taskController = require('../controllers/taskController'); 
 const Joi = require('joi');
 
 // =========================================================
-// JOI SCHEMAS (SYNCHRONIZED WITH UI CHANGES)
+// JOI SCHEMAS (SYNCHRONIZED WITH MULTI-FILE & OPTIONAL BUDGET)
 // =========================================================
 
 const createTaskSchema = Joi.object({
   title: Joi.string().min(3).max(200).required(),
   description: Joi.string().min(10).max(5000).required(),
   
-  // MODIFICATION: Budget is now optional during initial post.
-  // This prevents 400 Errors when the Client leaves it blank.
+  // Budget is optional during initial post (negotiated later)
   budget: Joi.number().min(0).allow(null, '').optional(), 
   
   deadline: Joi.date().required(),
@@ -25,8 +24,11 @@ const createTaskSchema = Joi.object({
   domain: Joi.string().max(200).allow('', null),
   requiredSkills: Joi.array().items(Joi.string().max(100)).default([]),
   company: Joi.string().max(200).allow('', null),
+  
+  // SUPPORT FOR ATTACHMENTS DURING CREATION
   attachments: Joi.array().items(Joi.string().uri()).default([]),
   attachmentNames: Joi.array().items(Joi.string()).default([]),
+  
   clientAgreedToTerms: Joi.boolean().valid(true).required(),
 });
 
@@ -36,10 +38,7 @@ const guestTaskSchema = Joi.object({
   guestName: Joi.string().required(),
   guestMobile: Joi.string().required(),
   guestEmail: Joi.string().email().allow('', null),
-  
-  // MODIFICATION: Budget optional for guest leads.
   budget: Joi.number().min(0).allow(null, '').optional(),
-  
   deadline: Joi.date().required(),
   domain: Joi.string().allow('', null),
   requiredSkills: Joi.array().items(Joi.string()).default([]),
@@ -75,9 +74,8 @@ router.get('/filters', verifyJWT, async (req, res) => {
 
 /**
  * Returns tasks actively assigned to the logged-in student
+ * MODIFIED: Explicitly selects attachments and studentPayout
  */
-// backend/routes/tasks.js -> find the GET /assigned route
-
 router.get('/assigned', verifyJWT, async (req, res) => {
   try {
     const tasks = await Task.find({
@@ -85,8 +83,11 @@ router.get('/assigned', verifyJWT, async (req, res) => {
       status: { $in: ['assigned', 'under_review', 'completed', 'declined'] },
     })
     .populate('client', 'name company location')
-    // ENSURE THESE ARE INCLUDED:
-    .select('+attachments +attachmentNames') 
+    // ============================================================
+    // FIX: EXPLICITLY SELECT ATTACHMENTS & PAYOUT
+    // This ensures students see the project brief and their specific earnings
+    // ============================================================
+    .select('+attachments +attachmentNames +studentPayout') 
     .sort({ updatedAt: -1 });
     
     res.json(tasks);
@@ -94,6 +95,7 @@ router.get('/assigned', verifyJWT, async (req, res) => {
       res.status(500).json({ message: 'Error loading workspace' }); 
   }
 });
+
 /**
  * Returns task invitations (Pending Acceptance)
  */
@@ -126,21 +128,32 @@ router.get('/chat-tasks', verifyJWT, async (req, res) => {
  */
 router.get('/mine', verifyJWT, async (req, res) => {
   try {
-    const tasks = await Task.find({ client: req.user.id }).sort({ createdAt: -1 });
+    const tasks = await Task.find({ client: req.user.id })
+      .select('+attachments +attachmentNames')
+      .sort({ createdAt: -1 });
     res.json(tasks);
   } catch (err) { res.status(500).json({ message: 'Error loading tasks' }); }
 });
 
 // =========================================================
-// 2. CREATION & SUBMISSION (ROUTED TO CONTROLLER)
+// 2. CREATION, UPDATE & SUBMISSION
 // =========================================================
 
 router.post('/create', verifyJWT, taskController.createTask);
 router.post('/guest-create', taskController.createGuestTask);
+
+/**
+ * MODIFICATION: ADDED UPDATE ROUTE (Resolves 404 on Client Edit)
+ */
+router.post('/:id/update', verifyJWT, taskController.updateTask);
+
+/**
+ * MODIFICATION: SUBMIT WORK (Now handles multi-file array)
+ */
 router.post('/:id/submit', verifyJWT, taskController.submitWork);
 
 // =========================================================
-// 3. WORKFLOW ACTIONS (RELIANT ON CONTROLLER FOR SOCKETS)
+// 3. WORKFLOW ACTIONS
 // =========================================================
 
 /**
@@ -162,7 +175,6 @@ router.post('/:id/accept-request', verifyJWT, async (req, res) => {
 
     await task.save();
     
-    // Broadcast update to Admin and Client rooms
     const io = req.app.get('socketio');
     if (io) {
         io.to('admin_room').emit('task_update', { taskId: task._id });
@@ -179,8 +191,7 @@ router.post('/:id/accept-request', verifyJWT, async (req, res) => {
 router.post('/:id/approve', verifyJWT, taskController.approveWork);
 
 /**
- * MODIFICATION: Client requests revision. 
- * Linked to Controller to ensure modificationNotes are saved and no limit is enforced.
+ * MODIFICATION: Client requests revision (Triggers instruction box)
  */
 router.post('/:id/decline', verifyJWT, taskController.declineWork);
 
@@ -199,7 +210,9 @@ router.post('/:id/feedback', verifyJWT, async (req, res, next) => {
 
 router.get('/:id', verifyJWT, async (req, res) => {
   try {
-    const task = await Task.findById(req.params.id).populate('client student');
+    const task = await Task.findById(req.params.id)
+      .populate('client student')
+      .select('+attachments +attachmentNames +studentPayout');
     if (!task) return res.status(404).json({ message: 'Task not found' });
     res.json(task);
   } catch (err) { res.status(404).json({ message: 'Not found' }); }
