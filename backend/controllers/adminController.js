@@ -237,25 +237,62 @@ exports.sendStudentTaskMessage = async (req, res) => {
 // 5. PROJECT ACTIONS & HYBRID PAYMENTS
 // =============================================================================
 
+
 exports.finalizeTaskBudget = async (req, res) => {
   try {
     const { taskId } = req.params;
-    const { amount } = req.body;
-    const task = await Task.findById(taskId);
-    if (!task) return res.status(404).json({ message: "Task not found" });
-    if (task.adminReceivedPayment) return res.status(400).json({ message: "Already Paid" });
+    // We now accept two distinct fields from the Admin Panel
+    const { clientBudget, studentPayout } = req.body;
 
-    task.budget = Number(amount);
+    const task = await Task.findById(taskId);
+    
+    if (!task) {
+      return res.status(404).json({ message: "Task not found" });
+    }
+
+    if (task.adminReceivedPayment) {
+      return res.status(400).json({ message: "Budget cannot be modified after payment is verified." });
+    }
+
+    // Update the dual financial fields
+    if (clientBudget !== undefined) task.budget = Number(clientBudget);
+    if (studentPayout !== undefined) task.studentPayout = Number(studentPayout);
+
     task.budgetFinalized = true; 
     await task.save();
 
-    emitUpdate(req, `${taskId}_client`, 'task_update', { taskId, budget: task.budget, budgetFinalized: true });
+    // ============================================================
+    // REAL-TIME BROADCAST (PRIVACY FOCUSED)
+    // ============================================================
+    
+    // 1. Notify Client Room (Shows the total cost to the client)
+    emitUpdate(req, `${taskId}_client`, 'task_update', { 
+        taskId, 
+        budget: task.budget, 
+        budgetFinalized: true 
+    });
+
+    // 2. Notify Student Room (Shows ONLY their specific earnings)
     if (task.student) {
-        emitUpdate(req, `${taskId}_student_${task.student}`, 'task_update', { taskId, budget: task.budget, budgetFinalized: true });
+        emitUpdate(req, `${taskId}_student_${task.student}`, 'task_update', { 
+            taskId, 
+            studentPayout: task.studentPayout, // Hidden from Client
+            budgetFinalized: true 
+        });
     }
     
-    res.json({ message: "Budget Finalized", task });
-  } catch (error) { res.status(500).json({ message: "Error" }); }
+    // 3. Update global Admin stats
+    emitUpdate(req, 'admin_room', 'task_update', { taskId });
+
+    return res.json({ 
+        message: "Financials finalized successfully", 
+        task 
+    });
+
+  } catch (error) { 
+    console.error("FinalizeTaskBudget Error:", error);
+    return res.status(500).json({ message: "Failed to finalize project financials." }); 
+  }
 };
 
 exports.rateStudent = async (req, res) => {

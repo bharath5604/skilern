@@ -11,7 +11,7 @@ class AdminPaymentService {
   final String baseUrl = '${Env.apiBaseUrl}/api/admin';
 
   // ============================================================
-  // ORIGINAL HELPERS (RESTORED 100%)
+  // HELPERS (RESTORED & OPTIMIZED)
   // ============================================================
 
   Map<String, String> get _headers {
@@ -115,17 +115,21 @@ class AdminPaymentService {
   // ============================================================
 
   // ============================================================
-  // MODIFICATION: HYBRID PAYMENT FINALIZER
-  // This method locks the budget and enables Razorpay for the Client.
+  // MODIFICATION: DUAL BUDGET FINALIZER
+  // Locks the Client Price and Student Earnings simultaneously.
   // ============================================================
   Future<Map<String, dynamic>> finalizeTaskBudget({
     required String taskId,
-    required double amount,
+    required double clientBudget,
+    required double studentPayout,
   }) async {
     final res = await _client.patch(
       _buildUri('/tasks/$taskId/finalize-budget'),
       headers: _headers,
-      body: jsonEncode({'amount': amount}),
+      body: jsonEncode({
+        'clientBudget': clientBudget,
+        'studentPayout': studentPayout,
+      }),
     );
 
     return _parseMapResponse(res, 'Failed to finalize project budget');

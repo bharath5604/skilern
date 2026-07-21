@@ -115,7 +115,7 @@ class MyTasksScreenState extends State<MyTasksScreen> {
               maxLines: 4,
               autofocus: true,
               decoration: const InputDecoration(
-                hintText: "Describe the required changes...",
+                hintText: "Describe exactly what needs to be changed...",
                 border: OutlineInputBorder(),
               ),
             ),
@@ -253,14 +253,9 @@ class MyTasksScreenState extends State<MyTasksScreen> {
           icon: const Icon(Icons.arrow_back_ios_new_rounded, color: primaryPurple),
           onPressed: () => Navigator.pop(context),
         ),
-        title: ShaderMask(
-          shaderCallback: (bounds) => const LinearGradient(
-            colors: [primaryPurple, secondaryPurple],
-          ).createShader(bounds),
-          child: const Text(
+        title: const Text(
             'My Active Projects',
-            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: Colors.white),
-          ),
+            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: textDark),
         ),
         actions: [IconButton(onPressed: loadMyTasks, icon: const Icon(Icons.refresh, color: primaryPurple))],
       ),
@@ -294,6 +289,24 @@ class MyTasksScreenState extends State<MyTasksScreen> {
             Row(
               children: [
                 Expanded(child: Text(t.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16))),
+                
+                // ============================================================
+                // MODIFICATION: EDIT TASK FEATURE
+                // ============================================================
+                if (t.status != 'completed')
+                  IconButton(
+                    icon: const Icon(Icons.edit_note_rounded, color: Colors.blue, size: 28),
+                    tooltip: "Modify Task Details",
+                    onPressed: () async {
+                      final result = await Navigator.pushNamed(
+                        context, 
+                        '/createTask', 
+                        arguments: {'task': t}
+                      );
+                      if (result == true) loadMyTasks();
+                    },
+                  ),
+                
                 _buildStatusChip(t.status),
               ],
             ),
@@ -311,6 +324,7 @@ class MyTasksScreenState extends State<MyTasksScreen> {
                   border: Border.all(color: isDownloadUnlocked ? Colors.green : Colors.blue.withOpacity(0.3)),
                 ),
                 child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
                       children: [
@@ -323,9 +337,6 @@ class MyTasksScreenState extends State<MyTasksScreen> {
                     ),
                     const SizedBox(height: 14),
 
-                    // ============================================================
-                    // MODIFICATION: MULTI-FILE DELIVERABLES LIST (RESTORED)
-                    // ============================================================
                     ...t.submissionFiles.map((file) {
                       final String url = file['url']!;
                       final String name = file['name']!;
@@ -340,7 +351,6 @@ class MyTasksScreenState extends State<MyTasksScreen> {
                             const SizedBox(width: 10),
                             Expanded(child: Text(name, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis)),
                             
-                            // RESTORED: View/Preview Button (Authenticated)
                             IconButton(
                               icon: const Icon(Icons.visibility, size: 18, color: Colors.blue),
                               onPressed: () => Navigator.push(context, MaterialPageRoute(
@@ -348,7 +358,6 @@ class MyTasksScreenState extends State<MyTasksScreen> {
                               )),
                             ),
 
-                            // RESTORED: Download to Device Button (Gated by payment)
                             IconButton(
                               icon: Icon(isDownloadUnlocked ? Icons.download : Icons.lock_outline, size: 18, color: isDownloadUnlocked ? primaryPurple : Colors.grey),
                               onPressed: isDownloadUnlocked ? () => _launchSecureUrl(url, name) : null,
@@ -432,14 +441,10 @@ class MyTasksScreenState extends State<MyTasksScreen> {
 
   void _showSnackBar(String m) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m), behavior: SnackBarBehavior.floating));
   
-  // ============================================================
-  // MODIFICATION: AUTHENTICATED SECURE DOWNLOAD HANDLER (FIXED)
-  // ============================================================
   Future<void> _launchSecureUrl(String url, String originalFileName) async {
     try {
       _showSnackBar("Authorizing secure download...");
       
-      // CLEAN TOKEN Logic: Prevents "Authorization header missing" or double-bearer errors
       String? token = AuthService.token;
       if (token == null) return;
       final String cleanToken = token.startsWith('Bearer ') 
@@ -452,7 +457,6 @@ class MyTasksScreenState extends State<MyTasksScreen> {
       );
 
       if (response.statusCode == 200) {
-        // Validation: Ensure the body isn't an error JSON
         if (response.headers['content-type']?.contains('application/json') ?? false) {
            _showSnackBar("Access Denied: Could not retrieve file bytes."); return;
         }
@@ -466,7 +470,6 @@ class MyTasksScreenState extends State<MyTasksScreen> {
           html.Url.revokeObjectUrl(blobUrl);
           _showSnackBar("Download successful: $originalFileName");
         } else {
-          // On mobile, navigate to secure viewer which already handles JWT streaming
           Navigator.push(context, MaterialPageRoute(builder: (_) => UnifiedPreviewScreen(url: url, title: originalFileName)));
         }
       } else { _showSnackBar("Access Denied (${response.statusCode})"); }

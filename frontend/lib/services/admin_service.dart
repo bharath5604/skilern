@@ -31,7 +31,6 @@ class AdminService {
   }
 
   Uri _buildUri(String path, [Map<String, String>? params]) {
-    // Logic Fix: Ensure path formatting is correct to prevent 404s
     final String cleanPath = path.startsWith('/') ? path : '/$path';
     return Uri.parse('$baseUrl$cleanPath').replace(
       queryParameters: (params == null || params.isEmpty) ? null : params,
@@ -198,17 +197,24 @@ class AdminService {
   }
 
   // =========================================================
-  // MODIFICATION: HYBRID PAYMENT FINALIZER
+  // MODIFICATION: DUAL FINALIZE LOGIC (CLIENT vs STUDENT)
   // =========================================================
 
-  /// Admin sets the final price agreed in chat.
+  /// Admin sets the final price the Client pays vs the Student receives.
   /// Hits PATCH /api/admin/tasks/:taskId/finalize-budget
   Future<Map<String, dynamic>> finalizeBudget({
     required String taskId, 
-    required double amount
+    required double clientAmount,   // Amount charged to the Client
+    required double studentAmount,  // Amount to be paid to the Student
   }) async {
     final uri = _buildUri('/tasks/$taskId/finalize-budget');
-    final data = await _patchRequest(uri, body: {'amount': amount});
+    
+    // Logic: Send both fields to the backend to resolve the privacy split
+    final data = await _patchRequest(uri, body: {
+      'clientBudget': clientAmount,
+      'studentPayout': studentAmount
+    });
+    
     return _normalizeMap(data);
   }
 

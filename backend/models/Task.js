@@ -14,8 +14,7 @@ function normalizeStringArray(value) {
 
 /**
  * Submission Sub Schema
- * Tracks the work uploaded by the student.
- * MODIFIED: Supports multiple deliverables and varied file types.
+ * Tracks multiple pieces of work uploaded by the student.
  */
 const submissionSchema = new Schema(
   {
@@ -95,11 +94,10 @@ const taskSchema = new Schema(
       maxlength: [5000, 'Task description cannot exceed 5000 characters'],
     },
 
-    // ============================================================
-    // CRITICAL FIX: CLIENT ATTACHMENTS (PROJECT BRIEF)
-    // These fields allow the database to store files given by 
-    // the client during the creation/posting phase.
-    // ============================================================
+    /**
+     * CLIENT ATTACHMENTS (PROJECT BRIEF)
+     * Files provided by the client when creating the task.
+     */
     attachments: {
       type: [String],
       default: [],
@@ -108,7 +106,6 @@ const taskSchema = new Schema(
       type: [String],
       default: [],
     },
-    // ============================================================
 
     /**
      * Client Logic: Registered vs Guest (Emergency Task)
@@ -182,11 +179,25 @@ const taskSchema = new Schema(
     /**
      * Project Parameters
      */
+    
+    // ============================================================
+    // MODIFICATION: DUAL FINANCIAL FIELDS
+    // ============================================================
+    // budget: What the CLIENT pays the platform
     budget: {
       type: Number,
       required: false, 
       min: [0, 'Budget cannot be negative'],
     },
+    
+    // studentPayout: What the STUDENT actually receives (Hidden from Client)
+    studentPayout: {
+      type: Number,
+      required: false,
+      min: [0, 'Payout cannot be negative'],
+      default: 0
+    },
+    // ============================================================
 
     deadline: {
       type: Date,
@@ -243,11 +254,6 @@ const taskSchema = new Schema(
       type: String,
       enum: [null, 'request_sent', 'request_rejected'],
       default: null,
-    },
-
-    studentAgreedToTerms: {
-      type: Boolean,
-      default: false,
     },
 
     /**

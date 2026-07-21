@@ -185,7 +185,7 @@ class _InvitationCardState extends State<_InvitationCard> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15), side: const BorderSide(color: Colors.blue, width: 0.5)),
       child: ListTile(
         title: Text(widget.task.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-        subtitle: Text("Budget: ₹${widget.task.budget?.toStringAsFixed(0) ?? 'TBD'}", style: const TextStyle(fontSize: 11, color: Colors.blue)),
+        subtitle: Text("Budget: ₹${widget.task.studentPayout?.toStringAsFixed(0) ?? 'TBD'}", style: const TextStyle(fontSize: 11, color: Colors.blue)),
         trailing: _busy ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : ElevatedButton(
           style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
           onPressed: _accept, child: const Text("Accept", style: TextStyle(fontSize: 11))

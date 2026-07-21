@@ -8,7 +8,15 @@ class Task {
   final String? clientId; // Optional for guest tasks
   final String? clientName;
 
-  final double? budget; // Requirement: Estimated amount is optional
+  // budget: The total amount paid by the Client
+  final double? budget; 
+  
+  // ============================================================
+  // MODIFICATION: STUDENT EARNINGS FIELD
+  // This is the specific amount the student receives (Hidden from Client)
+  // ============================================================
+  final double? studentPayout; 
+
   final String status;
 
   final String? location;
@@ -29,11 +37,7 @@ class Task {
   final bool clientTermsAccepted;
   final bool studentTermsAccepted;
 
-  // ============================================================
-  // MODIFICATION: MULTI-FILE SUBMISSION SUPPORT
-  // Replaced single submissionFile string with a list of file objects
-  // Each map contains {'url': '...', 'name': '...'}
-  // ============================================================
+  // Multi-file submission support
   final List<Map<String, String>> submissionFiles; 
   final String? submissionNotes;
   final String? submittedAt;
@@ -71,6 +75,7 @@ class Task {
     this.clientId,
     this.clientName,
     this.budget,
+    this.studentPayout, // Constructor addition
     required this.status,
     this.location,
     this.domain,
@@ -85,7 +90,7 @@ class Task {
     this.assignedStudentName,
     this.clientTermsAccepted = false,
     this.studentTermsAccepted = false,
-    this.submissionFiles = const [], // Default to empty list
+    this.submissionFiles = const [],
     this.submissionNotes,
     this.submittedAt,
     this.submissionApproved = false,
@@ -132,7 +137,6 @@ class Task {
     return const [];
   }
 
-  // Helper to parse the new files array in submission
   static List<Map<String, String>> _toFileMapList(dynamic value) {
     if (value is List) {
       return value.map((item) {
@@ -164,7 +168,11 @@ class Task {
       description: json['description']?.toString() ?? '',
       clientId: client?['_id']?.toString(),
       clientName: client?['name']?.toString(),
+      
       budget: _toDoubleOrNull(json['budget']),
+      // MODIFICATION: MAP PAYOUT FROM JSON
+      studentPayout: _toDoubleOrNull(json['studentPayout']),
+      
       status: json['status']?.toString() ?? 'open',
       location: json['location']?.toString(),
       domain: json['domain']?.toString(),
@@ -179,10 +187,7 @@ class Task {
       assignedStudentName: student?['name']?.toString(),
       clientTermsAccepted: _toBool(json['clientAgreedToTerms']),
       studentTermsAccepted: _toBool(json['studentAgreedToTerms']),
-      
-      // UPDATED MAPPING: Handle multiple files
       submissionFiles: _toFileMapList(submission?['files']),
-      
       submissionNotes: submission?['notes']?.toString(),
       submittedAt: submission?['submittedAt']?.toString(),
       submissionApproved: _toBool(submission?['approved']),
@@ -217,9 +222,8 @@ class Task {
       'adminPaidStudent': adminPaidStudent,
       'budgetFinalized': budgetFinalized,
       'budget': budget,
+      'studentPayout': studentPayout, // Export payout
       'modificationNotes': modificationNotes,
-      // Note: We don't usually send full submission objects back in toJson for task updates,
-      // but if needed, you would export submissionFiles here.
     };
   }
 
@@ -234,6 +238,7 @@ class Task {
     bool? adminPaidStudent,
     bool? budgetFinalized,
     double? budget,
+    double? studentPayout, // copyWith addition
     String? modificationNotes,
     List<Map<String, String>>? submissionFiles,
   }) {
@@ -244,6 +249,7 @@ class Task {
       clientId: clientId,
       clientName: clientName,
       budget: budget ?? this.budget,
+      studentPayout: studentPayout ?? this.studentPayout, // copyWith assignment
       status: status ?? this.status,
       location: location,
       domain: domain,
@@ -284,7 +290,5 @@ class Task {
   bool get isAssigned => status == 'assigned';
   bool get isUnderReview => status == 'under_review';
   bool get isCompleted => status == 'completed';
-  
-  // UPDATED: Now checks if the list contains files
   bool get hasSubmission => submissionFiles.isNotEmpty;
 }
