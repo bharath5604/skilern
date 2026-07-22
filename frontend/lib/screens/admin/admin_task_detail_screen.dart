@@ -110,7 +110,6 @@ class _AdminTaskDetailScreenState extends State<AdminTaskDetailScreen> {
 
   String _taskId() => _extractId(_taskData);
 
-  // LOGIC: Check if task is still in recruitment phase
   bool _isVettingAllowed() {
     final status = _safeString(_taskData['status']).toLowerCase();
     return status == 'open' || status == 'request_sent';
@@ -136,9 +135,7 @@ class _AdminTaskDetailScreenState extends State<AdminTaskDetailScreen> {
   Future<void> _makeCall(String? num) async {
     if (num == null || num.isEmpty) return;
     final Uri u = Uri(scheme: 'tel', path: num);
-    if (await canLaunchUrl(u)) {
-      await launchUrl(u);
-    }
+    if (await canLaunchUrl(u)) await launchUrl(u);
   }
 
   // ---------------------------------------------------------------------------
@@ -183,26 +180,17 @@ class _AdminTaskDetailScreenState extends State<AdminTaskDetailScreen> {
   Future<void> _handleFinalizeFinancials(String clientAmt, String studentAmt) async {
     final double? cVal = double.tryParse(clientAmt);
     final double? sVal = double.tryParse(studentAmt);
-    
-    if (cVal == null || cVal <= 0 || sVal == null || sVal <= 0) {
+    if (cVal == null || sVal == null) {
       _showSnackBar("Enter valid amounts for both fields");
       return;
     }
-
     setState(() => finalizingBudget = true);
     try {
-      await paymentService.finalizeTaskBudget(
-        taskId: _taskId(), 
-        clientBudget: cVal, 
-        studentPayout: sVal
-      );
-      _showSnackBar("Finances locked. Margin secured.");
+      await paymentService.finalizeTaskBudget(taskId: _taskId(), clientBudget: cVal, studentPayout: sVal);
+      _showSnackBar("Project finances locked.");
       await _reloadTaskData();
-    } catch (e) { 
-      _showSnackBar("Finalization failed."); 
-    } finally { 
-      if (mounted) setState(() => finalizingBudget = false); 
-    }
+    } catch (e) { _showSnackBar("Finalization failed."); }
+    finally { if (mounted) setState(() => finalizingBudget = false); }
   }
 
   Future<void> _verifyClientPayment() async {
@@ -210,7 +198,7 @@ class _AdminTaskDetailScreenState extends State<AdminTaskDetailScreen> {
     try {
       await adminService.confirmClientPayment(_taskId());
       await _reloadTaskData();
-      _showSnackBar("Payment verified.");
+      _showSnackBar("Client payment confirmed.");
     } catch (e) { _showSnackBar("Update failed"); }
     finally { if (mounted) setState(() => processingPayment = false); }
   }
@@ -220,7 +208,7 @@ class _AdminTaskDetailScreenState extends State<AdminTaskDetailScreen> {
     try {
       await adminService.confirmStudentPayout(_taskId());
       await _reloadTaskData();
-      _showSnackBar("Payout confirmed.");
+      _showSnackBar("Student payout confirmed.");
     } catch (e) { _showSnackBar("Update failed"); }
     finally { if (mounted) setState(() => processingPayment = false); }
   }
@@ -244,9 +232,100 @@ class _AdminTaskDetailScreenState extends State<AdminTaskDetailScreen> {
     });
   }
 
+  void _showStudentDetails(Map<String, dynamic> student) {
+    final id = _extractId(student);
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => FutureBuilder<Map<String, dynamic>>(
+        future: adminService.getStudentDetails(id),
+        builder: (context, snapshot) {
+          if (!snapshot.hasData) return const SizedBox(height: 400, child: Center(child: CircularProgressIndicator()));
+          final profile = _safeMap(snapshot.data!['student']);
+          final history = List.from(snapshot.data!['history'] ?? []);
+          final List<String> skills = _safeStringList(profile['skills']);
+          final String studentName = _safeString(profile['name']);
+
+          return Container(
+            height: MediaQuery.of(context).size.height * 0.85,
+            decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(30))),
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(studentName, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                    _ratingBadge(_safeNum(profile['totalScore']), _safeInt(profile['totalScoreCount'])),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                _iconDetail(Icons.location_on, _safeString(profile['location'], fallback: 'Remote')),
+                _iconDetail(Icons.phone, _safeString(profile['mobile'])),
+                _iconDetail(Icons.email, _safeString(profile['email'])),
+                const Divider(height: 32),
+                const Text("BANKING & IDENTITY", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.blue)),
+                const SizedBox(height: 12),
+                _infoCardRow("A/C Holder", _safeString(profile['bankAccountHolderName'], fallback: 'Not set')),
+                _infoCardRow("A/C Number", _safeString(profile['bankAccountNumber'], fallback: 'Not set')),
+                _infoCardRow("IFSC Code", _safeString(profile['ifscCode'], fallback: 'Not set')),
+                const SizedBox(height: 10),
+                if (profile['idCardUrl'] != null && profile['idCardUrl'].toString().isNotEmpty)
+                   ElevatedButton.icon(
+                     style: ElevatedButton.styleFrom(backgroundColor: Colors.blueGrey, minimumSize: const Size(double.infinity, 40)),
+                     onPressed: () {
+                        Navigator.push(context, MaterialPageRoute(
+                            builder: (_) => UnifiedPreviewScreen(url: profile['idCardUrl'], title: "ID Proof: $studentName")
+                        ));
+                     }, 
+                     icon: const Icon(Icons.badge, size: 18), label: const Text("View Identity Proof", style: TextStyle(fontSize: 12))
+                   ),
+                const Divider(height: 32),
+                const Text("SKILLS", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.grey)),
+                const SizedBox(height: 8),
+                Wrap(spacing: 8, children: skills.map((s) => Chip(label: Text(s, style: const TextStyle(fontSize: 11)))).toList()),
+                const Divider(height: 32),
+                const Text("HISTORY", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                Expanded(
+                  child: history.isEmpty ? const Center(child: Text("No history yet")) : ListView.builder(
+                    itemCount: history.length,
+                    itemBuilder: (ctx, i) => ListTile(
+                      dense: true,
+                      title: Text(history[i]['title'], style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)), 
+                      subtitle: Text(history[i]['status']), 
+                      trailing: Text(_formatCurrency(_safeNum(history[i]['budget'])), style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold))
+                    ),
+                  ),
+                )
+              ],
+            ),
+          );
+        }
+      ),
+    );
+  }
+
   // ---------------------------------------------------------------------------
   // UI BUILDERS
   // ---------------------------------------------------------------------------
+
+  Widget _ratingBadge(num totalScore, int count) {
+    final double avg = count == 0 ? 0 : totalScore / count;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(color: Colors.amber.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.star, color: Colors.amber, size: 14),
+          const SizedBox(width: 4),
+          Text("${avg.toStringAsFixed(1)} ($count)", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.orange)),
+        ],
+      ),
+    );
+  }
 
   Widget _buildBudgetFinalizer() {
     final status = _taskData['status'];
@@ -254,32 +333,31 @@ class _AdminTaskDetailScreenState extends State<AdminTaskDetailScreen> {
     if (_taskData['adminReceivedPayment'] == true) return const SizedBox.shrink();
 
     final bool isFinalized = _taskData['budgetFinalized'] == true;
-    final TextEditingController clientCtrl = TextEditingController(text: _taskData['budget']?.toString() ?? '');
-    final TextEditingController studentCtrl = TextEditingController(text: _taskData['studentPayout']?.toString() ?? '');
+    final TextEditingController clientAmountCtrl = TextEditingController(text: _taskData['budget']?.toString() ?? '');
+    final TextEditingController studentPayoutCtrl = TextEditingController(text: _taskData['studentPayout']?.toString() ?? '');
 
     return Container(
       margin: const EdgeInsets.only(top: 16),
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(color: Colors.orange.withOpacity(0.05), borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.orange.withOpacity(0.2))),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(isFinalized ? "UPDATE PROJECT FINANCES" : "FINALIZE FINANCES (MANDATORY)", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.orange)),
+          const Text("FINALIZE FINANCES", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.orange)),
           const SizedBox(height: 14),
           Row(
             children: [
-              Expanded(child: TextField(controller: clientCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: "Client Pays", isDense: true, border: OutlineInputBorder()))),
+              Expanded(child: TextField(controller: clientAmountCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: "Client Pays", isDense: true, border: OutlineInputBorder()))),
               const SizedBox(width: 10),
-              Expanded(child: TextField(controller: studentCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: "Student Gets", isDense: true, border: OutlineInputBorder()))),
+              Expanded(child: TextField(controller: studentPayoutCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: "Student Gets", isDense: true, border: OutlineInputBorder()))),
             ],
           ),
           const SizedBox(height: 12),
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: finalizingBudget ? null : () => _handleFinalizeFinancials(clientCtrl.text, studentCtrl.text),
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.orange, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-              child: Text(isFinalized ? "Update Values" : "Finalize & Lock Amounts"),
+              onPressed: finalizingBudget ? null : () => _handleFinalizeFinancials(clientAmountCtrl.text, studentPayoutCtrl.text),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+              child: const Text("Finalize project money"),
             ),
           ),
         ],
@@ -297,7 +375,10 @@ class _AdminTaskDetailScreenState extends State<AdminTaskDetailScreen> {
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(color: Colors.blue.withOpacity(0.05), borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.blue.withOpacity(0.2))),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          const Text("MANUAL PAYMENT CHAIN", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.blue)),
+          const SizedBox(height: 14),
           _paymentToggle("1. Client paid Admin", clientPaid, _verifyClientPayment),
           const SizedBox(height: 12),
           _paymentToggle("2. Admin paid Student", studentPaid, _verifyStudentPayout),
@@ -333,12 +414,16 @@ class _AdminTaskDetailScreenState extends State<AdminTaskDetailScreen> {
           ...List.generate(attachments.length, (index) {
             final String url = attachments[index].toString();
             final String name = names.length > index ? names[index].toString() : "Project File ${index + 1}";
-            return ListTile(
-              dense: true,
-              leading: const Icon(Icons.description_outlined, color: Colors.blue),
-              title: Text(name, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-              trailing: const Icon(Icons.remove_red_eye_outlined, size: 18, color: Colors.grey),
-              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => UnifiedPreviewScreen(url: url, title: "Brief: $name"))),
+            return Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
+              child: ListTile(
+                dense: true,
+                leading: const Icon(Icons.description_outlined, color: Colors.blue),
+                title: Text(name, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                trailing: const Icon(Icons.remove_red_eye_outlined, size: 18, color: Colors.grey),
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => UnifiedPreviewScreen(url: url, title: "Brief: $name"))),
+              ),
             );
           }),
         ],
@@ -391,9 +476,7 @@ class _AdminTaskDetailScreenState extends State<AdminTaskDetailScreen> {
     );
   }
 
-  /// RESTORED: Candidate Section with PRE-INVITE CHAT AND CALL
   Widget _buildSuggestedStudentsSection() {
-    // SECURITY: Hide this entire section if task is already assigned
     if (!_isVettingAllowed()) return const SizedBox.shrink();
 
     return Column(
@@ -416,40 +499,36 @@ class _AdminTaskDetailScreenState extends State<AdminTaskDetailScreen> {
         if (loadingSuggestions) const Center(child: CircularProgressIndicator()),
         ...suggestedStudents.map((s) {
           final isInvited = _extractId(_taskData['requestedStudent']) == _extractId(s);
+          final String phone = _safeString(s['mobile']);
           return Card(
             margin: const EdgeInsets.only(bottom: 12),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: _border)),
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                children: [
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: CircleAvatar(child: Text(_initialsFromName(_safeString(s['name'])))),
-                    title: Text(_safeString(s['name']), style: const TextStyle(fontWeight: FontWeight.bold)),
-                    subtitle: Text("${s['location'] ?? 'Remote'} • ${s['tasksCompleted'] ?? 0} tasks"),
-                  ),
-                  Row(
-                    children: [
-                      // RESTORED: CHAT BEFORE INVITING
-                      IconButton(
-                        icon: const Icon(Icons.chat_bubble_outline, color: Colors.blue), 
-                        onPressed: () => _openChat(_extractId(s))
-                      ),
-                      // RESTORED: CALL BEFORE INVITING
-                      IconButton(
-                        icon: const Icon(Icons.call_outlined, color: Colors.green), 
-                        onPressed: () => _makeCall(_safeString(s['mobile']))
-                      ),
-                      const Spacer(),
-                      ElevatedButton(
-                        style: ElevatedButton.styleFrom(backgroundColor: isInvited ? Colors.green : _primaryRed),
-                        onPressed: isInvited ? null : () => _sendRequestToStudent(s),
-                        child: Text(isInvited ? "Sent" : "Invite"),
-                      ),
-                    ],
-                  ),
-                ],
+            child: InkWell(
+              onTap: () => _showStudentDetails(s),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  children: [
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: CircleAvatar(child: Text(_initialsFromName(_safeString(s['name'])))),
+                      title: Text(_safeString(s['name']), style: const TextStyle(fontWeight: FontWeight.bold)),
+                      subtitle: Text("${s['location'] ?? 'Remote'} • ${s['tasksCompleted'] ?? 0} tasks"),
+                    ),
+                    Row(
+                      children: [
+                        IconButton(icon: const Icon(Icons.chat_bubble_outline, color: Colors.blue), onPressed: () => _openChat(_extractId(s))),
+                        IconButton(icon: const Icon(Icons.call_outlined, color: Colors.green), onPressed: () => _makeCall(phone)),
+                        const Spacer(),
+                        ElevatedButton(
+                          style: ElevatedButton.styleFrom(backgroundColor: isInvited ? Colors.green : _primaryRed),
+                          onPressed: isInvited ? null : () => _sendRequestToStudent(s),
+                          child: Text(isInvited ? "Sent" : "Invite"),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ),
           );
@@ -475,6 +554,7 @@ class _AdminTaskDetailScreenState extends State<AdminTaskDetailScreen> {
           children: [
             IconButton(icon: const Icon(Icons.chat_bubble_outline, color: Colors.blue), onPressed: () => _openChat(studentId)),
             IconButton(icon: const Icon(Icons.call, color: Colors.green), onPressed: () => _makeCall(mobile)),
+            IconButton(icon: const Icon(Icons.info_outline, color: Colors.grey), onPressed: () => _showStudentDetails(student)),
           ],
         ),
       ),
@@ -503,7 +583,7 @@ class _AdminTaskDetailScreenState extends State<AdminTaskDetailScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (isGuest) Container(margin: const EdgeInsets.only(bottom: 8), padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: Colors.orange, borderRadius: BorderRadius.circular(8)), child: const Text("EMERGENCY TASK", style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold))),
+                if (isGuest) Container(margin: const EdgeInsets.only(bottom: 8), padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: Colors.orange, borderRadius: BorderRadius.circular(8)), child: const Text("EMERGENCY", style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold))),
                 Text(_safeString(task['title']), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
                 const Divider(height: 20),
                 Row(children: [
@@ -520,29 +600,33 @@ class _AdminTaskDetailScreenState extends State<AdminTaskDetailScreen> {
           _buildBudgetFinalizer(), 
           _buildAdminPaymentControl(),
           const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(color: _surface, borderRadius: BorderRadius.circular(20), border: Border.all(color: _border)),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text("REQUIRED SKILLS", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.grey)),
-                const SizedBox(height: 10),
-                Wrap(spacing: 8, children: requiredSkills.map((s) => Chip(backgroundColor: _primaryRed.withOpacity(0.05), label: Text(s, style: const TextStyle(fontSize: 11, color: _primaryRed)))).toList()),
-                const Divider(height: 24),
-                const Text("DESCRIPTION", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.grey)),
-                const SizedBox(height: 8),
-                Text(_safeString(task['description']), style: const TextStyle(fontSize: 13, color: Colors.black87, height: 1.4)),
-                const SizedBox(height: 12),
-                Text("Final Client Cost: ${_formatCurrency(_safeNum(task['budget']))}", style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
-                Text("Student Earning: ${_formatCurrency(_safeNum(task['studentPayout']))}", style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 12)),
-              ],
-            ),
-          ),
-          const SizedBox(height: 24),
           if (_hasAssignedStudent()) _buildAssignedStudentCard(),
           _buildSuggestedStudentsSection(),
+          _buildDescriptionCard(),
           const SizedBox(height: 50),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDescriptionCard() {
+    final requiredSkills = _safeStringList(_taskData['requiredSkills']);
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(color: _surface, borderRadius: BorderRadius.circular(20), border: Border.all(color: _border)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text("REQUIRED SKILLS", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.grey)),
+          const SizedBox(height: 10),
+          Wrap(spacing: 8, children: requiredSkills.map((s) => Chip(label: Text(s, style: const TextStyle(fontSize: 11)))).toList()),
+          const Divider(height: 24),
+          const Text("DESCRIPTION", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.grey)),
+          const SizedBox(height: 8),
+          Text(_safeString(_taskData['description']), style: const TextStyle(fontSize: 13, color: Colors.black87, height: 1.4)),
+          const SizedBox(height: 12),
+          Text("Final Client Cost: ${_formatCurrency(_safeNum(_taskData['budget']))}", style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
+          Text("Student Earning: ${_formatCurrency(_safeNum(_taskData['studentPayout']))}", style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 12)),
         ],
       ),
     );
