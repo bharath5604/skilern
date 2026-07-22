@@ -300,7 +300,7 @@ class _WorkspaceTaskCardState extends State<_WorkspaceTaskCard> {
         children: [
           Row(children: [
             Expanded(child: Text(widget.task.title, style: const TextStyle(fontWeight: FontWeight.bold))),
-            Text("₹${widget.task.budget?.toStringAsFixed(0) ?? 'TBD'}", style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
+            Text("₹${widget.task.studentPayout?.toStringAsFixed(0) ?? 'TBD'}", style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
           ]),
           const SizedBox(height: 12),
           
